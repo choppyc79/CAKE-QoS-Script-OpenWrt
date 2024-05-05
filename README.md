@@ -23,10 +23,12 @@ To use this script, you need to install these packages:
 * kmod-tcp-bbr
 * irqbalance
 * htop (Optional)
+* kmod-ifb
+* kmod-sched-ctinfo
 
 Copy and paste this into your SSH client:
 ```
-opkg update && opkg install tc-tiny kmod-sched-cake kmod-veth kmod-tcp-bbr irqbalance
+opkg update && opkg install tc-tiny kmod-sched-cake kmod-veth kmod-tcp-bbr irqbalance kmod-sched-ctinfo kmod-ifb
 ```
 
 ## Install
