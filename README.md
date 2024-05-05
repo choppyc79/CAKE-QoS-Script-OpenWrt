@@ -32,7 +32,7 @@ opkg update && opkg install tc-tiny kmod-sched-cake kmod-veth kmod-tcp-bbr irqba
 ## Install
 Copy and paste this into your SSH client:
 ```
-rm /root/cake.sh; rm /etc/init.d/cake; rm /etc/hotplug.d/iface/99-cake; rm /etc/nftables.d/*-rules.nft; wget -O /root/cake.sh "https://raw.githubusercontent.com/Last-times/CAKE-QoS-Script-OpenWrt/main/cake.sh"; chmod 755 /root/cake.sh
+rm /root/cake.sh; rm /etc/init.d/cake; rm /etc/hotplug.d/iface/99-cake; rm /etc/nftables.d/*-rules.nft; wget -O /root/cake.sh "https://raw.githubusercontent.com/hudra0/CAKE-QoS-Script-OpenWrt/main/cake.sh"; chmod 755 /root/cake.sh
 ```
 The **`cake.sh`** script is located in the **`/root/`** folder on the router and you have to edit this:
 1. Change the **CAKE settings** according to your connection type and also change the other settings (like rules, ports, IP address,  irqbalance, etc.).
