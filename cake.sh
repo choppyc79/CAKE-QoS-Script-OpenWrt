@@ -5,8 +5,12 @@
 ### Interfaces ###
 
 ## Go to "Network -> Interfaces" and write the name of the "device" used for the 'WAN' interface.
-WAN="wan"  # Example: eth0, eth0.2, eth1, eth1.2, wan, etc.
+WAN="eth1"  # Example: eth0, eth0.2, eth1, eth1.2, wan, etc.
 
+DOWNSHAPING_METHOD="ctinfo" # Options: "veth", "ctinfo"
+
+## "ctinfo"  Uses connection tracking information to restore DSCP markings on incoming packets
+## "veth" Utilizes a virtual Ethernet pair to control incoming traffic
 
 ######################################################################################################################
 
@@ -303,23 +307,37 @@ uci set dhcp.odhcpd.loglevel="3"
 uci commit && reload_config
 }
 
-## Add veth devices
-ip link show veth0 > /dev/null 2>&1 || {
-ip link add type veth
-sleep 10
-}
-ip link set veth0 up
-ip link set veth1 up
-ip link set veth1 promisc on
-ip link set veth1 master br-lan
-ip rule del priority 100 > /dev/null 2>&1
-ip route del table 100 > /dev/null 2>&1
-ip route add default dev veth0 table 100
-ip rule add iif $WAN priority 100 table 100
-ip -6 rule del priority 100 > /dev/null 2>&1
-ip -6 route del table 100 > /dev/null 2>&1
-ip -6 route add default dev veth0 table 100
-ip -6 rule add iif $WAN priority 100 table 100
+if [ "$DOWNSHAPING_METHOD" = "veth" ]; then
+    ## Add veth devices
+    ip link show veth0 > /dev/null 2>&1 || {
+    ip link add type veth
+    sleep 10
+    }
+    ip link set veth0 up
+    ip link set veth1 up
+    ip link set veth1 promisc on
+    ip link set veth1 master br-lan
+    ip rule del priority 100 > /dev/null 2>&1
+    ip route del table 100 > /dev/null 2>&1
+    ip route add default dev veth0 table 100
+    ip rule add iif $WAN priority 100 table 100
+    ip -6 rule del priority 100 > /dev/null 2>&1
+    ip -6 route del table 100 > /dev/null 2>&1
+    ip -6 route add default dev veth0 table 100
+    ip -6 rule add iif $WAN priority 100 table 100
+
+elif [ "$DOWNSHAPING_METHOD" = "ctinfo" ]; then
+    # Set up ingress handle for WAN interface
+    tc qdisc add dev $WAN handle ffff: ingress
+    # Create IFB interface
+    ip link add name ifb-$WAN type ifb
+    ip link set ifb-$WAN up
+    # Redirect ingress traffic from WAN to IFB and restore DSCP from conntrack
+    tc filter add dev $WAN parent ffff: protocol all matchall action ctinfo dscp 63 128 mirred egress redirect dev ifb-$WAN
+else
+    echo "Invalid downstream shaping method: $DOWNSHAPING_METHOD"
+    exit 1
+fi
 
 ############################################################
 
@@ -542,17 +560,20 @@ esac
 
 ############################################################
 
-## Delete the old qdiscs created by the script
-tc qdisc del dev veth0 root > /dev/null 2>&1
-tc qdisc del dev $WAN root > /dev/null 2>&1
-
 ############################################################
 
 ### CAKE qdiscs ###
 
 ## Inbound / Ingress
 if [ "$BANDWIDTH_DOWN" != "" ]; then
-    tc qdisc add dev veth0 root cake $BANDWIDTH_DOWN_CAKE $AUTORATE_INGRESS_CAKE $PRIORITY_QUEUE_INGRESS $HOST_ISOLATION_INGRESS $NAT_INGRESS $WASH_INGRESS $INGRESS_MODE $RTT $COMMON_LINK_PRESETS $ETHER_VLAN_KEYWORD $LINK_COMPENSATION $OVERHEAD $MPU $EXTRA_PARAMETERS_INGRESS
+    # Determine the device based on the downshaping method
+    if [ "$DOWNSHAPING_METHOD" = "ctinfo" ]; then
+        INGRESS_DEVICE="ifb-$WAN"  # Use ifb-$WAN if ctinfo is active
+    else
+        INGRESS_DEVICE="veth0"     # Default to veth0 if ctinfo is not active
+    fi
+
+    tc qdisc add dev $INGRESS_DEVICE root cake $BANDWIDTH_DOWN_CAKE $AUTORATE_INGRESS_CAKE $PRIORITY_QUEUE_INGRESS $HOST_ISOLATION_INGRESS $NAT_INGRESS $WASH_INGRESS $INGRESS_MODE $RTT $COMMON_LINK_PRESETS $ETHER_VLAN_KEYWORD $LINK_COMPENSATION $OVERHEAD $MPU $EXTRA_PARAMETERS_INGRESS
 fi
 
 ## Outbound / Egress
@@ -581,16 +602,6 @@ service_triggers() {
 start_service() {
     /etc/init.d/cake enabled || exit 0
     echo start
-    procd_open_instance
-    procd_set_param command /bin/sh "/root/cake.sh"
-    procd_set_param stdout 1
-    procd_set_param stderr 1
-    procd_close_instance
-}
-
-restart() {
-    /etc/init.d/cake enabled || exit 0
-    echo restart
     /root/cake.sh
 }
 
@@ -606,6 +617,11 @@ stop_service() {
     ## Delete the old qdiscs created by the script
     tc qdisc del dev veth0 root > /dev/null 2>&1
     tc qdisc del dev $WAN root > /dev/null 2>&1
+    tc qdisc del dev ifb-$WAN root > /dev/null 2>&1
+    tc qdisc del dev $WAN ingress > /dev/null 2>&1
+
+    ## Delete IFB
+    ip link del ifb-$WAN 2>/dev/null
 
     ############################################################
 
@@ -656,11 +672,31 @@ stop_service() {
     nft delete chain inet fw4 dscp_marking_ip_addresses_ipv6 > /dev/null 2>&1
 
     ############################################################
+    
+    ## Delete nftables files if they exist
+
+    # Check if the file in /tmp exists and delete it
+    if [ -f /tmp/00-rules.nft ]; then
+        rm /tmp/00-rules.nft
+    fi
+
+    # Check if the file in /etc/nftables.d exists and delete it
+    if [ -f /etc/nftables.d/00-rules.nft ]; then
+        rm /etc/nftables.d/00-rules.nft
+    fi
+    
     exit 0
 }
 
+restart() {
+    echo "Restarting service..."
+    /etc/init.d/cake stop
+    sleep 1 # Ensure all processes have been properly terminated
+    /etc/init.d/cake start    
+}
+
 reload_service() {
-    start
+    restart
 }
 INITSCRIPT
 chmod 755 /etc/init.d/cake > /dev/null 2>&1
@@ -899,7 +935,9 @@ chain pre_mangle_forward {
     meta nfproto ipv6 jump dscp_marking_ports_ipv6 comment "DSCP marking rules for ports (IPv6)"
     meta nfproto ipv4 jump dscp_marking_ip_addresses_ipv4 comment "DSCP marking rules for IP addresses (IPv4)"
     meta nfproto ipv6 jump dscp_marking_ip_addresses_ipv6 comment "DSCP marking rules for IP addresses (IPv6)"
-
+    ## Store DSCP in conntrack for restoration on ingress
+    ct mark set ip dscp or 128 counter
+    ct mark set ip6 dscp or 128 counter
 }
 
 
@@ -911,22 +949,20 @@ chain pre_mangle_postrouting {
     meta nfproto ipv6 jump dscp_marking_ports_ipv6 comment "DSCP marking rules for ports (IPv6)"
     meta nfproto ipv4 jump dscp_marking_ip_addresses_ipv4 comment "DSCP marking rules for IP addresses (IPv4)"
     meta nfproto ipv6 jump dscp_marking_ip_addresses_ipv6 comment "DSCP marking rules for IP addresses (IPv6)"
-
+    ## Store DSCP in conntrack for restoration on ingress
+    ct mark set ip dscp or 128 counter
+    ct mark set ip6 dscp or 128 counter
 }
 
-
 chain dscp_marking_ports_ipv4 {
-
     ## Port rules (IPv4) ##
 
     # ICMP (aka ping)
     meta l4proto icmp counter ip dscp set $DSCP_ICMP comment "ICMP (aka ping) to $DSCP_ICMP_COMMENT"
-
     # SSH, NTP and DNS
     meta nfproto ipv4 tcp sport { 22, 53, 5353 } counter ip dscp set cs2 comment "SSH and DNS to CS2 (TCP)"
     meta nfproto ipv4 tcp dport { 22, 53, 5353 } counter ip dscp set cs2 comment "SSH and DNS to CS2 (TCP)"
     meta nfproto ipv4 udp sport { 123, 53, 5353 } counter ip dscp set cs2 comment "NTP and DNS to CS2 (UDP)"
-    meta nfproto ipv4 udp dport { 123, 53, 5353 } counter ip dscp set cs2 comment "NTP and DNS to CS2 (UDP)"
 
     # DNS over TLS (DoT)
     meta nfproto ipv4 tcp sport 853 counter ip dscp set af41 comment "DNS over TLS to AF41 (TCP)"
@@ -1154,13 +1190,14 @@ RULES
     ## Default chain for the rules
     if [ "$CHAIN" = "FORWARD" ]; then
         # FORWARD
-        grep "jump" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i "14,17 s/#/ /" /tmp/00-rules.nft > /dev/null 2>&1
-        grep "jump" /tmp/00-rules.nft | sed '5q;d' | grep "#   " > /dev/null 2>&1 || sed -i "22 s/c/#c/; 23,29 s/ /#/; 31 s/}/#}/" /tmp/00-rules.nft > /dev/null 2>&1
+        grep "jump" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i "14,20 s/#/ /" /tmp/00-rules.nft > /dev/null 2>&1
+        grep "jump" /tmp/00-rules.nft | sed '5q;d' | grep "#   " > /dev/null 2>&1 || sed -i "24 s/c/#c/; 25,34 s/ /#/; 35 s/}/#}/" /tmp/00-rules.nft > /dev/null 2>&1
     elif [ "$CHAIN" != "FORWARD" ]; then
         # POSTROUTING
-        grep "jump" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i "14,17 s/ /#/" /tmp/00-rules.nft > /dev/null 2>&1
-        grep "jump" /tmp/00-rules.nft | sed '5q;d' | grep "    " > /dev/null 2>&1 || sed -i "22 s/#c/c/; 23,29 s/#/ /; 31 s/#}/}/" /tmp/00-rules.nft > /dev/null 2>&1
+        grep "jump" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i "14,20 s/ /#/" /tmp/00-rules.nft > /dev/null 2>&1
+        grep "jump" /tmp/00-rules.nft | sed '5q;d' | grep "    " > /dev/null 2>&1 || sed -i "24 s/#c/c/; 25,34 s/#/ /; 35 s/#}/}/" /tmp/00-rules.nft > /dev/null 2>&1
     fi
+
 
     ############################################################
 
