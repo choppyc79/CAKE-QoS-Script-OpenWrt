@@ -82,7 +82,7 @@ PRIORITY_QUEUE_EGRESS="diffserv4"   # Write: "besteffort" | "diffserv3" | "diffs
                                     # "diffserv4" has '4 tins' or different priority tiers. <- Recommended
                                     # "diffserv8" has '8 tins' or different priority tiers.
 
-HOST_ISOLATION="yes"  # Write: "yes" | "no"
+HOST_ISOLATION="no"  # Write: "yes" | "no"
                       # Host Isolation or 'dual-dsthost' (ingress) and 'dual-srchost' (egress), prevents a single host/client
                       # that has multiple connections (like when torrenting) from hogging all the bandwidth
                       # and provides better traffic management when multiple hosts/clients are using the internet at the same time.
@@ -260,7 +260,7 @@ DEFAULT_QDISC="fq_codel"  # Write: "fq_codel" | "cake"
                           # "cake"     Great for WAN links, but computationally expensive with little advantages over 'fq_codel' for LAN links.
 
 
-TCP_CONGESTION_CONTROL="cubic"  # Write: "cubic" | "bbr"
+TCP_CONGESTION_CONTROL="bbr"  # Write: "cubic" | "bbr"
                                 # "cubic" The default algorithm for most Linux platforms. (Default in OpenWrt)
                                 # "bbr"   The algorithm that was developed by Google and is since used on YouTube, maybe this can improve network response.
 
@@ -1472,17 +1472,36 @@ fi
 
 ############################################################
 
-# Verify nftables configuration is loaded
-sleep 1
-echo "Checking nftables rules..."
-NFT_OUTPUT=$(nft list ruleset 2>/dev/null)
+RULE_TMP="/tmp/00-rules.nft"
+RULE_ETC="/etc/nftables.d/00-rules.nft"
 
-if [ -z "$NFT_OUTPUT" ]; then
-    echo "Error: nftables ruleset is empty or not loaded."
-    exit 1  # Stop execution if nftables ruleset is not loaded
-else
-    echo "nftables ruleset successfully loaded."
+echo "Checking if required nftables rule files exist..."
+sleep 1
+
+[ -f "$RULE_TMP" ] && echo "✔ $RULE_TMP exists." || echo "✖ $RULE_TMP is missing."
+[ -f "$RULE_ETC" ] && echo "✔ $RULE_ETC exists." || echo "✖ $RULE_ETC is missing."
+
+# Ensure /tmp/00-rules.nft exists before continuing
+if [ ! -f "$RULE_TMP" ]; then
+    echo "Error: $RULE_TMP does not exist. Aborting check."
+    exit 1
 fi
+
+echo "Checking if nftables rules from $RULE_TMP are loaded..."
+sleep 1
+
+# Get current nftables ruleset
+CURRENT_RULESET=$(nft list ruleset 2>/dev/null)
+EXPECTED_RULESET=$(cat "$RULE_TMP")
+
+# Compare normalized versions (remove whitespace)
+if echo "$CURRENT_RULESET" | tr -d '[:space:]' | grep -q "$(echo "$EXPECTED_RULESET" | tr -d '[:space:]')"; then
+    echo "✔ nftables ruleset matches $RULE_TMP."
+else
+    echo "✖ Loaded nftables ruleset does not match $RULE_TMP."
+    exit 1
+fi
+
 sleep 1
 
 # Reload firewall to apply rules
