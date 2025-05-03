@@ -761,6 +761,7 @@ restart() {
 reload_service() {
     restart
 }
+
 INITSCRIPT
 chmod 755 /etc/init.d/cake > /dev/null 2>&1
 /etc/init.d/cake enable > /dev/null 2>&1
