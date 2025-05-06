@@ -47,75 +47,99 @@ RTT=""  # Optional RTT shaping window in ms (e.g., 40–300)
 EXTRA_PARAMETERS_INGRESS="memlimit 32mb"  # Custom cake parameters
 EXTRA_PARAMETERS_EGRESS="memlimit 32mb"
 
-######################################################################################################################
-
+############################################################
 
 ### Rules settings ###
+CHAIN="FORWARD"         # Default chain for nftables rules
 
-## Default chain for the rules
-CHAIN="FORWARD"  # Write: "FORWARD" | "POSTROUTING"
+DSCP_ICMP="CS0"         # DSCP value for ICMP traffic
+DSCP_GAMING="CS4"       # DSCP value for game traffic
 
+# Known rules (optional)
+BROADCAST_VIDEO="no"           # YouTube Live, Twitch, Vimeo, etc. to CS3
+GAMING="no"                    # Xbox, PS, CoD, FIFA, etc. to CS4
+GAME_STREAMING="no"            # NVIDIA GeForce NOW, etc. to AF42
+MULTIMEDIA_CONFERENCING="no"   # Zoom, Teams, Skype, etc. to AF41
+TELEPHONY="no"                 # VoIP apps like WhatsApp, Discord, etc.
 
-## DSCP values for the rules
-DSCP_ICMP="CS0"    # Change the DSCP value for ICMP (aka ping) to whatever you want.
-DSCP_GAMING="CS4"  # You can test changing the DSCP value for games from "CS4" to "EF" or whatever you want.
-
-## Use known rules [OPTIONAL]
-BROADCAST_VIDEO="no"          # Write: "yes" | "no" (Known 'Live Streaming' ports to CS3 like YouTube Live, Twitch, Vimeo and LinkedIn Live)
-GAMING="no"                   # Write: "yes" | "no" (Known 'Game' ports and 'Game consoles' ports to CS4 like Xbox, PlayStation, Call of Duty, FIFA, Minecraft and Supercell Games)
-GAME_STREAMING="no"           # Write: "yes" | "no" (Known 'Game Streaming' ports to AF42 like NVIDIA GeForce NOW)
-MULTIMEDIA_CONFERENCING="no"  # Write: "yes" | "no" (Known 'Video conferencing' ports to AF41 like Zoom, Microsoft Teams, Skype, FaceTime, GoToMeeting, Webex Meeting, Jitsi Meet, Google Meet and TeamViewer)
-TELEPHONY="no"                # Write: "yes" | "no" (Known 'VoIP' and 'VoWiFi' ports to EF)
-
-                               # These 4 known port rules are optional.
-                               # Only use these rules if you need to prioritize the "specified" traffic
-                               # or you can stop using these rules without problems.
 
 ############################################################
 
+### Ports settings ###
+
+## Don't add ports "80", "443", "8080", and "1935" below — rules for them already exist.
+## You may delete the sample ports below if not needed.
+
+## Game ports (prioritized automatically if unmarked)
+TCP_SRC_GAME_PORTS=""
+TCP_DST_GAME_PORTS=""
+UDP_SRC_GAME_PORTS=""
+UDP_DST_GAME_PORTS=""
+                    ## "SRC" = Source port | "DST" = Destination port
+                    # Optional: Add specific TCP/UDP ports used by games.
+                    # Use commas to separate values or ranges (e.g., 27000-27030).
+
+## Bulk ports
+TCP_SRC_BULK_PORTS=""
+TCP_DST_BULK_PORTS=""
+UDP_SRC_BULK_PORTS=""
+UDP_DST_BULK_PORTS=""
+                    ## For bulk traffic like BitTorrent.
+                    # Set known BitTorrent ports and define them here.
+                    # Use commas or port ranges A-B.
+
+## Other ports [OPTIONAL]
+DSCP_OTHER_PORTS="CS0"  # DSCP value for 'other' ports.
+
+TCP_SRC_OTHER_PORTS=""
+TCP_DST_OTHER_PORTS=""
+UDP_SRC_OTHER_PORTS=""
+UDP_DST_OTHER_PORTS=""
+                    ## Custom port-based DSCP marking.
+                    # Define TCP/UDP ports to mark with the DSCP value above.
+
+############################################################
 
 ### IP address settings ###
 
-## To add static IP addresses in OpenWrt go to "Network -> DHCP and DNS -> Static Leases -> Click on 'Add'".
-## You can delete the IP addresses below, because are just examples.
+## Define static IPs via OpenWrt UI: Network → DHCP and DNS → Static Leases
 
-
-## Game consoles (Static IP)
+## Game consoles (Static IPs)
 IPV4_GAME_CONSOLES_STATIC_IP="192.168.1.200-192.168.1.201"
-                              # Define a list of IPv4 addresses that will cover all ports (except ports 80, 443, 8080, Live Streaming and BitTorrent).
-                              # Write a single IPv4 address or ranges of IPv4 addresses A-B and use a comma to separate them as shown.
-                              # The IPv4 address ranges "192.168.1.20-192.168.1.25" will cover IPv4 addresses from '192.168.1.20' to '192.168.1.25'
-
-
 IPV6_GAME_CONSOLES_STATIC_IP="IPv6::200-IPv6::201"
-                              # Write the IPv6 address or simply write "IPv6::" to automatically add the IPv6 address of your router
-                              # and just change the number "15" (or IP address ranges '20' and '25') to the last number of the static IPv4 of your console.
-                              # To add an IPv6 address, simply change the number after the double colon "::" for the last number of your static IPv4 address.
-                              # The last number "::15" is the static IPv4 address of '192.168.x.15'
-                              # The IPv6 address ranges "::20-::25" will cover static IPv4 addresses from '192.168.x.20' to '192.168.x.25'
+                    # Mark all traffic from these IPs (except for exempt ports) as gaming.
+                    # Supports single IP or range (A-B), comma-separated.
+
+## TorrentBox (Static IPs)
+IPV4_TORRENTBOX_STATIC_IP=""
+IPV6_TORRENTBOX_STATIC_IP=""
+                    # Mark all traffic from these IPs as bulk.
+                    # Supports IPv4/IPv6 ranges as above.
+
+## Other static IP addresses [OPTIONAL]
+DSCP_OTHER_STATIC_IP="CS0"  # DSCP value to use for marking below IPs.
+IPV4_OTHER_STATIC_IP=""
+IPV6_OTHER_STATIC_IP=""
+                    # Mark all traffic from these IPs with the defined DSCP value.
+                    # Supports IP ranges, comma-separated.
 
 ######################################################################################################################
 
-
 ### Change default OpenWrt settings ###
 
-DEFAULT_QDISC="fq_codel"  # Write: "fq_codel" | "cake"
-                          # "fq_codel" Great all around qdisc. (Default in OpenWrt)
-                          # "cake"     Great for WAN links, but computationally expensive with little advantages over 'fq_codel' for LAN links.
+DEFAULT_QDISC="fq_codel"  # Options: "fq_codel" | "cake"
+                          # fq_codel = Good general-purpose scheduler (OpenWrt default)
+                          # cake     = Best for WAN shaping, heavier CPU usage
 
+TCP_CONGESTION_CONTROL="bbr"  # Options: "cubic" | "bbr"
+                              # bbr = Google's congestion algorithm (used on YouTube)
+                              # cubic = Default on most Linux systems
 
-TCP_CONGESTION_CONTROL="bbr"  # Write: "cubic" | "bbr"
-                                # "cubic" The default algorithm for most Linux platforms. (Default in OpenWrt)
-                                # "bbr"   The algorithm that was developed by Google and is since used on YouTube, maybe this can improve network response.
+ECN="2"  # Explicit Congestion Notification: 0=disable, 1=initiate/accept, 2=accept only
+         # See: https://www.bufferbloat.net/projects/cerowrt/wiki/Enable_ECN/
 
+######################################################################################################################
 
-ECN="2"  # Write values between "0" and "2"
-         # "0" Disable ECN. Neither initiate nor accept ECN.
-         # "1" Enable ECN. When requested by incoming connections and also request ECN on outgoing connection attempts.
-         # "2" Enable ECN. When requested by incoming connections, but do not request ECN on outgoing connections. (Default in OpenWrt)
-         # Read: https://www.bufferbloat.net/projects/cerowrt/wiki/Enable_ECN/
-
-#####################################################################################################################
 
 #########################      #########################      #########################      #########################
 ### DO NOT EDIT BELOW ###      ### DO NOT EDIT BELOW ###      ### DO NOT EDIT BELOW ###      ### DO NOT EDIT BELOW ###
@@ -152,40 +176,18 @@ is_package_installed_apk() {
 are_all_packages_installed() {
     local package_manager="$1"
     for package in $REQUIRED_PACKAGES; do
-        if [ "$package_manager" = "opkg" ] && ! is_package_installed_opkg "$package"; then
-            return 1
-        elif [ "$package_manager" = "apk" ] && ! is_package_installed_apk "$package"; then
-            return 1
+        if [ "$package_manager" = "opkg" ]; then
+            if ! is_package_installed_opkg "$package"; then
+                return 1
+            fi
+        elif [ "$package_manager" = "apk" ]; then
+            if ! is_package_installed_apk "$package"; then
+                return 1
+            fi
         fi
     done
     return 0
 }
-
-# Function to update the package list
-update_package_list() {
-    local package_manager="$1"
-    if [ "$package_manager" = "opkg" ]; then
-        opkg update
-    elif [ "$package_manager" = "apk" ]; then
-        apk update
-    fi
-}
-
-# Function to install missing packages
-install_missing_packages() {
-    local package_manager="$1"
-    for package in $REQUIRED_PACKAGES; do
-        if [ "$package_manager" = "opkg" ] && ! is_package_installed_opkg "$package"; then
-            echo "$package is not installed. Installing with opkg..."
-            opkg install "$package"
-        elif [ "$package_manager" = "apk" ] && ! is_package_installed_apk "$package"; then
-            echo "$package is not installed. Installing with apk..."
-            apk add "$package"
-        fi
-    done
-}
-
-# Main script logic
 
 # Detect the package manager
 PACKAGE_MANAGER=$(detect_package_manager)
@@ -197,20 +199,47 @@ fi
 
 # Check if all required packages are installed
 if are_all_packages_installed "$PACKAGE_MANAGER"; then
+	sleep 1
     echo "All required packages are already installed. Skipping update and installation."
 else
     echo "Some packages are missing. Running $PACKAGE_MANAGER update..."
-    update_package_list "$PACKAGE_MANAGER"
-    install_missing_packages "$PACKAGE_MANAGER"
+
+    # Update the package list
+    if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+        opkg update
+    elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+        apk update
+    fi
+
+    # Install missing packages
+    for package in $REQUIRED_PACKAGES; do
+        if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+            if ! is_package_installed_opkg "$package"; then
+                echo "$package is not installed. Installing with opkg..."
+                opkg install "$package"
+            else
+                echo "$package is already installed. Skipping..."
+            fi
+        elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+            if ! is_package_installed_apk "$package"; then
+                echo "$package is not installed. Installing with apk..."
+                apk add "$package"
+            else
+                echo "$package is already installed. Skipping..."
+            fi
+        fi
+    done
 fi
 
 
 ############################################################
 
-# Function to configure ctinfo downshaping method
-configure_ctinfo_downshaping() {
+# Configure downshaping methods
+echo "Selected downshaping method: $DOWNSHAPING_METHOD"
+
+if [ "$DOWNSHAPING_METHOD" = "ctinfo" ]; then
     echo "Using ctinfo method..."
-    sleep 1
+	sleep 1
     
     # Ensure previous ingress qdisc is removed to avoid conflicts
     tc qdisc del dev $WAN ingress > /dev/null 2>&1
@@ -227,22 +256,18 @@ configure_ctinfo_downshaping() {
 
     # Redirect ingress traffic from WAN to IFB, matching DSCP value of 63
     tc filter add dev $WAN parent ffff: protocol all matchall action ctinfo dscp 63 128 mirred egress redirect dev ifb-$WAN
-}
 
-# Function to configure lan downshaping method
-configure_lan_downshaping() {
+elif [ "$DOWNSHAPING_METHOD" = "lan" ] || [ -z "$DOWNSHAPING_METHOD" ]; then
     echo "Using LAN method..."
-    sleep 1
+	sleep 1
     
     # Remove IFB interface if it was created
     ip link show ifb-$WAN > /dev/null 2>&1 && ip link del ifb-$WAN
     tc qdisc del dev $WAN ingress > /dev/null 2>&1
 
     echo "LAN method selected, $LAN configuration applied."
-}
 
-# Function to handle invalid downshaping method
-configure_invalid_downshaping() {
+else
     echo "Invalid downshaping method: $DOWNSHAPING_METHOD. Defaulting to LAN."
     DOWNSHAPING_METHOD="lan"
     echo "Using LAN method..."
@@ -252,24 +277,7 @@ configure_invalid_downshaping() {
     tc qdisc del dev $WAN ingress > /dev/null 2>&1
     
     echo "LAN method selected, $LAN configuration applied."
-}
-
-# Function to configure downshaping methods based on DOWNSHAPING_METHOD
-configure_downshaping_method() {
-    echo "Selected downshaping method: $DOWNSHAPING_METHOD"
-    
-    case "$DOWNSHAPING_METHOD" in
-        "ctinfo")
-            configure_ctinfo_downshaping
-            ;;
-        "lan" | "")
-            configure_lan_downshaping
-            ;;
-        *)
-            configure_invalid_downshaping
-            ;;
-    esac
-}
+fi
 
 
 ############################################################
@@ -334,7 +342,7 @@ if [ "$AUTORATE_INGRESS" = "yes" ] && [ "$BANDWIDTH_DOWN" != "0" ] && [ "$BANDWI
     AUTORATE_INGRESS_CAKE="autorate-ingress"
 fi
 
-## OVERHEAD, MPU, and LINK COMPENSATION parameters
+## OVERHEAD, MPU and LINK COMPENSATION parameters
 case $OVERHEAD in
     "") OVERHEAD="" ;;
     *) OVERHEAD="overhead $OVERHEAD" ;;
@@ -431,6 +439,7 @@ case $INGRESS_MODE in
 esac
 
 ## ACK-FILTER parameters (AUTO)
+# Automatically use the "ack-filter" parameter if your up/down bandwidth is at least 1x15 asymmetric
 FORMULA="$(awk "BEGIN { a = $BANDWIDTH_DOWN; b = $BANDWIDTH_UP * 14; print (a > b) }")" > /dev/null 2>&1
 if [  "$FORMULA" -eq 1 ]; then
     case $ACK_FILTER_EGRESS in
@@ -453,83 +462,71 @@ case $RTT in
     *) RTT="rtt ${RTT}ms" ;;
 esac
 
-# Function to delete existing qdiscs
-delete_qdiscs() {
-    local dev="$1"
-    tc qdisc del dev "$dev" root > /dev/null 2>&1
-}
-
-# Function to apply CAKE to a device for ingress or egress
-apply_cake() {
-    local dev="$1"
-    local cake_params="$2"
-    tc qdisc add dev "$dev" root cake $cake_params
-}
-
-# Function to set the ingress device based on the downshaping method
-get_ingress_device() {
-    case "$DOWNSHAPING_METHOD" in
-        "ctinfo")
-            echo "ifb-$WAN"  # Use ifb-$WAN if ctinfo is active
-            ;;
-        "lan")
-            echo "$LAN"      # Use LAN if DOWNSHAPING_METHOD is "lan"
-            ;;
-        *)
-            echo "$LAN"      # Default to LAN if no specific method is active
-            ;;
-    esac
-}
-
-# Apply CAKE settings
-echo "Applying CAKE settings..."
-
 ############################################################
 
 # Delete old qdiscs created by the script
-delete_qdiscs "$WAN"
-delete_qdiscs "$LAN"
-delete_qdiscs "br-lan"
+tc qdisc del dev $WAN root > /dev/null 2>&1
+tc qdisc del dev $LAN root > /dev/null 2>&1
+tc qdisc del dev br-lan root > /dev/null 2>&1
 
 ############################################################
 ### CAKE qdiscs ###
 
 ## Inbound / Ingress
 if [ -n "$BANDWIDTH_DOWN" ]; then
-    INGRESS_DEVICE=$(get_ingress_device)
+    # Determine the ingress device based on the downshaping method
+    case "$DOWNSHAPING_METHOD" in
+        "ctinfo")
+            INGRESS_DEVICE="ifb-$WAN"  # Use ifb-$WAN if ctinfo is active
+            ;;
+        "lan")
+            INGRESS_DEVICE="$LAN"      # Use LAN if DOWNSHAPING_METHOD is "lan"
+            ;;
+        *)
+            INGRESS_DEVICE="$LAN"      # Default to LAN if no specific method is active
+            ;;
+    esac
 
     echo "Ingress device set to: $INGRESS_DEVICE"
 
     # Delete any existing qdisc on the ingress device
-    delete_qdiscs "$INGRESS_DEVICE"
+    tc qdisc del dev $INGRESS_DEVICE root > /dev/null 2>&1
 
     # Apply CAKE to the ingress device
-    apply_cake "$INGRESS_DEVICE" "$BANDWIDTH_DOWN_CAKE $AUTORATE_INGRESS_CAKE $PRIORITY_QUEUE_INGRESS \
-        $HOST_ISOLATION_INGRESS $NAT_INGRESS $WASH_INGRESS $INGRESS_MODE $RTT $COMMON_LINK_PRESETS \
-        $ETHER_VLAN_KEYWORD $LINK_COMPENSATION $OVERHEAD $MPU $EXTRA_PARAMETERS_INGRESS"
+    tc qdisc add dev $INGRESS_DEVICE root cake \
+        $BANDWIDTH_DOWN_CAKE $AUTORATE_INGRESS_CAKE $PRIORITY_QUEUE_INGRESS \
+        $HOST_ISOLATION_INGRESS $NAT_INGRESS $WASH_INGRESS $INGRESS_MODE \
+        $RTT $COMMON_LINK_PRESETS $ETHER_VLAN_KEYWORD $LINK_COMPENSATION \
+        $OVERHEAD $MPU $EXTRA_PARAMETERS_INGRESS
 fi  # <-- Close the Ingress block here
 
 ## Outbound / Egress
 if [ -n "$BANDWIDTH_UP" ]; then
     # Delete any existing qdisc on the WAN interface
-    delete_qdiscs "$WAN"
+    tc qdisc del dev $WAN root > /dev/null 2>&1
 
     # Apply CAKE on the WAN interface for egress traffic
-    apply_cake "$WAN" "$BANDWIDTH_UP_CAKE $PRIORITY_QUEUE_EGRESS $HOST_ISOLATION_EGRESS \
+    tc qdisc add dev $WAN root cake \
+        $BANDWIDTH_UP_CAKE $PRIORITY_QUEUE_EGRESS $HOST_ISOLATION_EGRESS \
         $NAT_EGRESS $WASH_EGRESS $ACK_FILTER_EGRESS $RTT $COMMON_LINK_PRESETS \
-        $ETHER_VLAN_KEYWORD $LINK_COMPENSATION $OVERHEAD $MPU $EXTRA_PARAMETERS_EGRESS"
+        $ETHER_VLAN_KEYWORD $LINK_COMPENSATION $OVERHEAD $MPU $EXTRA_PARAMETERS_EGRESS
 fi  # <-- Close the Egress block here
 
 ## Inbound / Ingress - LAN-specific block
 if [ "$DOWNSHAPING_METHOD" = "lan" ] && [ -n "$BANDWIDTH_DOWN" ]; then
     # Delete any existing qdisc on the LAN interface
-    delete_qdiscs "$LAN"
+    tc qdisc del dev $LAN root > /dev/null 2>&1
 
     # Apply CAKE to the LAN interface for ingress traffic shaping
-    apply_cake "$LAN" "$BANDWIDTH_DOWN_CAKE $AUTORATE_INGRESS_CAKE $PRIORITY_QUEUE_INGRESS \
-        $HOST_ISOLATION_INGRESS $NAT_INGRESS $WASH_INGRESS $INGRESS_MODE $RTT $COMMON_LINK_PRESETS \
-        $ETHER_VLAN_KEYWORD $LINK_COMPENSATION $OVERHEAD $MPU $EXTRA_PARAMETERS_INGRESS"
+    tc qdisc add dev $LAN root cake \
+        $BANDWIDTH_DOWN_CAKE $AUTORATE_INGRESS_CAKE $PRIORITY_QUEUE_INGRESS \
+        $HOST_ISOLATION_INGRESS $NAT_INGRESS $WASH_INGRESS $INGRESS_MODE \
+        $RTT $COMMON_LINK_PRESETS $ETHER_VLAN_KEYWORD $LINK_COMPENSATION \
+        $OVERHEAD $MPU $EXTRA_PARAMETERS_INGRESS
 fi  # <-- Close the LAN-specific Ingress block here
+
+
+######################################################################################################################
 
 ### Init Script ###
 
@@ -567,8 +564,10 @@ stop_service() {
 	tc qdisc del dev $LAN root > /dev/null 2>&1
 	tc qdisc del dev br-lan root > /dev/null 2>&1
 
-    ## Delete IFB
-    ip link del ifb-$WAN 2>/dev/null
+	# Delete the IFB device
+	# Remove ingress qdisc on $WAN
+	tc qdisc del dev $WAN ingress 2>/dev/null
+	ip link del ifb-$WAN 2>/dev/null
 
     ############################################################
 
@@ -688,6 +687,18 @@ case $DSCP_GAMING in
     *) DSCP_GAMING="$(printf "%s\n" "$DSCP_GAMING" | awk '{print tolower($0)}')" > /dev/null 2>&1 ;;
 esac
 
+## DSCP value for "other ports"
+case $DSCP_OTHER_PORTS in
+    "") DSCP_OTHER_PORTS="cs0" ;;
+    *) DSCP_OTHER_PORTS="$(printf "%s\n" "$DSCP_OTHER_PORTS" | awk '{print tolower($0)}')" > /dev/null 2>&1 ;;
+esac
+
+## DSCP value for "other static IP addresses"
+case $DSCP_OTHER_STATIC_IP in
+    "") DSCP_OTHER_STATIC_IP="cs0" ;;
+    *) DSCP_OTHER_STATIC_IP="$(printf "%s\n" "$DSCP_OTHER_STATIC_IP" | awk '{print tolower($0)}')" > /dev/null 2>&1 ;;
+esac
+
 ## Known rules
 case $BROADCAST_VIDEO in
     yes) BROADCAST_VIDEO="yes" ;;
@@ -713,10 +724,14 @@ esac
 ## Comments for the rules
 DSCP_ICMP_COMMENT="$(printf "%s\n" "$DSCP_ICMP" | awk '{print toupper($0)}')" > /dev/null 2>&1
 DSCP_GAMING_COMMENT="$(printf "%s\n" "$DSCP_GAMING" | awk '{print toupper($0)}')" > /dev/null 2>&1
+DSCP_OTHER_PORTS_COMMENT="$(printf "%s\n" "$DSCP_OTHER_PORTS" | awk '{print toupper($0)}')" > /dev/null 2>&1
+DSCP_OTHER_STATIC_IP_COMMENT="$(printf "%s\n" "$DSCP_OTHER_STATIC_IP" | awk '{print toupper($0)}')" > /dev/null 2>&1
 
 ## Automatically add the IPv6 address
 IPV6_ADDRESS="$(printf "%.16s\n" "$(uci -q get network.globals.ula_prefix)")" > /dev/null 2>&1
 IPV6_GAME_CONSOLES_STATIC_IP="$(printf "%s\n" "$IPV6_GAME_CONSOLES_STATIC_IP" | sed "s/IPv6::/$IPV6_ADDRESS/g")" > /dev/null 2>&1
+IPV6_TORRENTBOX_STATIC_IP="$(printf "%s\n" "$IPV6_TORRENTBOX_STATIC_IP" | sed "s/IPv6::/$IPV6_ADDRESS/g")" > /dev/null 2>&1
+IPV6_OTHER_STATIC_IP="$(printf "%s\n" "$IPV6_OTHER_STATIC_IP" | sed "s/IPv6::/$IPV6_ADDRESS/g")" > /dev/null 2>&1
 
 ## To check if there is a difference between the settings and the rules
 if [ "$CHAIN" = "FORWARD" ]; then
@@ -751,9 +766,26 @@ elif [ "$TELEPHONY" != "yes" ]; then
 fi
 CHECK_DSCP_ICMP="$(sed '/ICMP (aka ping) to/!d; s/.*set //; s/ comment.*//' /etc/nftables.d/00-rules.nft)" > /dev/null 2>&1
 CHECK_DSCP_GAMING="$(sed '/Game ports to/!d; s/.*set //; s/ comment.*//' /etc/nftables.d/00-rules.nft | sed '1q;d')" > /dev/null 2>&1
+CHECK_TCP_SRC_GAME_PORTS="$(sed '/Game ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '1q;d')" > /dev/null 2>&1
+CHECK_TCP_DST_GAME_PORTS="$(sed '/Game ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '2q;d')" > /dev/null 2>&1
+CHECK_UDP_SRC_GAME_PORTS="$(sed '/Game ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '3q;d')" > /dev/null 2>&1
+CHECK_UDP_DST_GAME_PORTS="$(sed '/Game ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '4q;d')" > /dev/null 2>&1
+CHECK_TCP_SRC_BULK_PORTS="$(sed '/Bulk ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '1q;d')" > /dev/null 2>&1
+CHECK_TCP_DST_BULK_PORTS="$(sed '/Bulk ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '2q;d')" > /dev/null 2>&1
+CHECK_UDP_SRC_BULK_PORTS="$(sed '/Bulk ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '3q;d')" > /dev/null 2>&1
+CHECK_UDP_DST_BULK_PORTS="$(sed '/Bulk ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '4q;d')" > /dev/null 2>&1
+CHECK_DSCP_OTHER_PORTS="$(sed '/Other ports to/!d; s/.*set //; s/ comment.*//' /etc/nftables.d/00-rules.nft | sed '1q;d')" > /dev/null 2>&1
+CHECK_TCP_SRC_OTHER_PORTS="$(sed '/Other ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '1q;d')" > /dev/null 2>&1
+CHECK_TCP_DST_OTHER_PORTS="$(sed '/Other ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '2q;d')" > /dev/null 2>&1
+CHECK_UDP_SRC_OTHER_PORTS="$(sed '/Other ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '3q;d')" > /dev/null 2>&1
+CHECK_UDP_DST_OTHER_PORTS="$(sed '/Other ports to/!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '4q;d')" > /dev/null 2>&1
 CHECK_IPV4_GAME_CONSOLES_STATIC_IP="$(sed '/Game consoles to /!d; s/.*daddr { //; s/ } meta.*//' /etc/nftables.d/00-rules.nft | sed '1q;d')" > /dev/null 2>&1
 CHECK_IPV6_GAME_CONSOLES_STATIC_IP="$(sed '/Game consoles to /!d; s/.*daddr { //; s/ } meta.*//' /etc/nftables.d/00-rules.nft | sed '3q;d')" > /dev/null 2>&1
-
+CHECK_IPV4_TORRENTBOX_STATIC_IP="$(sed '/TorrentBox to /!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '1q;d')" > /dev/null 2>&1
+CHECK_IPV6_TORRENTBOX_STATIC_IP="$(sed '/TorrentBox to /!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '3q;d')" > /dev/null 2>&1
+CHECK_DSCP_OTHER_STATIC_IP="$(sed '/Other static IP addresses to/!d; s/.*set //; s/ comment.*//' /etc/nftables.d/00-rules.nft | sed '1q;d')" > /dev/null 2>&1
+CHECK_IPV4_OTHER_STATIC_IP="$(sed '/Other static IP addresses to /!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '1q;d')" > /dev/null 2>&1
+CHECK_IPV6_OTHER_STATIC_IP="$(sed '/Other static IP addresses to /!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '3q;d')" > /dev/null 2>&1
 
 ############################################################
 
@@ -767,8 +799,26 @@ if [ "$CHAIN" != "$CHECK_CHAIN" ] || \
    [ "$GAME_STREAMING" != "$CHECK_GAME_STREAMING" ] || \
    [ "$MULTIMEDIA_CONFERENCING" != "$CHECK_MULTIMEDIA_CONFERENCING" ] || \
    [ "$TELEPHONY" != "$CHECK_TELEPHONY" ] || \
+   [ "$TCP_SRC_GAME_PORTS" != "$CHECK_TCP_SRC_GAME_PORTS" ] || \
+   [ "$TCP_DST_GAME_PORTS" != "$CHECK_TCP_DST_GAME_PORTS" ] || \
+   [ "$UDP_SRC_GAME_PORTS" != "$CHECK_UDP_SRC_GAME_PORTS" ] || \
+   [ "$UDP_DST_GAME_PORTS" != "$CHECK_UDP_DST_GAME_PORTS" ] || \
+   [ "$TCP_SRC_BULK_PORTS" != "$CHECK_TCP_SRC_BULK_PORTS" ] || \
+   [ "$TCP_DST_BULK_PORTS" != "$CHECK_TCP_DST_BULK_PORTS" ] || \
+   [ "$UDP_SRC_BULK_PORTS" != "$CHECK_UDP_SRC_BULK_PORTS" ] || \
+   [ "$UDP_DST_BULK_PORTS" != "$CHECK_UDP_DST_BULK_PORTS" ] || \
+   [ "$DSCP_OTHER_PORTS" != "$CHECK_DSCP_OTHER_PORTS" ] || \
+   [ "$TCP_SRC_OTHER_PORTS" != "$CHECK_TCP_SRC_OTHER_PORTS" ] || \
+   [ "$TCP_DST_OTHER_PORTS" != "$CHECK_TCP_DST_OTHER_PORTS" ] || \
+   [ "$UDP_SRC_OTHER_PORTS" != "$CHECK_UDP_SRC_OTHER_PORTS" ] || \
+   [ "$UDP_DST_OTHER_PORTS" != "$CHECK_UDP_DST_OTHER_PORTS" ] || \
    [ "$IPV4_GAME_CONSOLES_STATIC_IP" != "$CHECK_IPV4_GAME_CONSOLES_STATIC_IP" ] || \
-   [ "$IPV6_GAME_CONSOLES_STATIC_IP" != "$CHECK_IPV6_GAME_CONSOLES_STATIC_IP" ] ; then
+   [ "$IPV6_GAME_CONSOLES_STATIC_IP" != "$CHECK_IPV6_GAME_CONSOLES_STATIC_IP" ] || \
+   [ "$IPV4_TORRENTBOX_STATIC_IP" != "$CHECK_IPV4_TORRENTBOX_STATIC_IP" ] || \
+   [ "$IPV6_TORRENTBOX_STATIC_IP" != "$CHECK_IPV6_TORRENTBOX_STATIC_IP" ] || \
+   [ "$DSCP_OTHER_STATIC_IP" != "$CHECK_DSCP_OTHER_STATIC_IP" ] || \
+   [ "$IPV4_OTHER_STATIC_IP" != "$CHECK_IPV4_OTHER_STATIC_IP" ] || \
+   [ "$IPV6_OTHER_STATIC_IP" != "$CHECK_IPV6_OTHER_STATIC_IP" ]; then
 
 cat << RULES > /tmp/00-rules.nft
 
@@ -878,6 +928,28 @@ chain dscp_marking_ports_ipv4 {
     meta nfproto ipv4 meta l4proto udp meta length > 84 meta mark 50 counter ip dscp set af41 comment "Prioritize unmarked traffic of packet lengths between 77 and 1256 bytes that have more than 250 pps to AF41 (UDP)"
     meta nfproto ipv4 udp sport != { 80, 443 } udp dport != { 80, 443 } meta mark != { 42, 43, 50 } meta length 0-1256 ip dscp cs1 counter ip dscp set $DSCP_GAMING comment "Prioritize unmarked traffic of packet lengths between 0 and 1256 bytes that have less than 250 pps to $DSCP_GAMING_COMMENT (UDP) - Gaming & VoIP"
 	
+	
+
+    ## Custom port rules (IPv4) ##
+
+    # Game ports - Used by games
+    meta nfproto ipv4 tcp sport { $TCP_SRC_GAME_PORTS } counter ip dscp set $DSCP_GAMING comment "Game ports to $DSCP_GAMING_COMMENT (TCP)"
+    meta nfproto ipv4 tcp dport { $TCP_DST_GAME_PORTS } counter ip dscp set $DSCP_GAMING comment "Game ports to $DSCP_GAMING_COMMENT (TCP)"
+    meta nfproto ipv4 udp sport { $UDP_SRC_GAME_PORTS } counter ip dscp set $DSCP_GAMING comment "Game ports to $DSCP_GAMING_COMMENT (UDP)"
+    meta nfproto ipv4 udp dport { $UDP_DST_GAME_PORTS } counter ip dscp set $DSCP_GAMING comment "Game ports to $DSCP_GAMING_COMMENT (UDP)"
+
+    # Bulk ports - Used for 'bulk traffic' such as "BitTorrent"
+    meta nfproto ipv4 tcp sport { $TCP_SRC_BULK_PORTS } counter ip dscp set cs1 comment "Bulk ports to CS1 (TCP)"
+    meta nfproto ipv4 tcp dport { $TCP_DST_BULK_PORTS } counter ip dscp set cs1 comment "Bulk ports to CS1 (TCP)"
+    meta nfproto ipv4 udp sport { $UDP_SRC_BULK_PORTS } counter ip dscp set cs1 comment "Bulk ports to CS1 (UDP)"
+    meta nfproto ipv4 udp dport { $UDP_DST_BULK_PORTS } counter ip dscp set cs1 comment "Bulk ports to CS1 (UDP)"
+
+    # Other ports [OPTIONAL] - Mark wherever you want
+    meta nfproto ipv4 tcp sport { $TCP_SRC_OTHER_PORTS } counter ip dscp set $DSCP_OTHER_PORTS comment "Other ports to $DSCP_OTHER_PORTS_COMMENT (TCP)"
+    meta nfproto ipv4 tcp dport { $TCP_DST_OTHER_PORTS } counter ip dscp set $DSCP_OTHER_PORTS comment "Other ports to $DSCP_OTHER_PORTS_COMMENT (TCP)"
+    meta nfproto ipv4 udp sport { $UDP_SRC_OTHER_PORTS } counter ip dscp set $DSCP_OTHER_PORTS comment "Other ports to $DSCP_OTHER_PORTS_COMMENT (UDP)"
+    meta nfproto ipv4 udp dport { $UDP_DST_OTHER_PORTS } counter ip dscp set $DSCP_OTHER_PORTS comment "Other ports to $DSCP_OTHER_PORTS_COMMENT (UDP)"
+
 }
 
 
@@ -953,6 +1025,27 @@ chain dscp_marking_ports_ipv6 {
     meta nfproto ipv6 meta l4proto udp meta length > 84 meta mark 80 counter ip6 dscp set af41 comment "Prioritize unmarked traffic of packet lengths between 84 and 1256 bytes that have more than 250 pps to AF41 (UDP)"
     meta nfproto ipv6 udp sport != { 80, 443 } udp dport != { 80, 443 } meta mark != { 72, 73, 80 } meta length 0-1256 ip6 dscp cs1 counter ip6 dscp set $DSCP_GAMING comment "Prioritize unmarked traffic of packet lengths between 0 and 1256 bytes that have less than 250 pps to $DSCP_GAMING_COMMENT (UDP) - Gaming & VoIP"
 	
+
+    ## Custom port rules (IPv6) ##
+
+    # Game ports - Used by games
+    meta nfproto ipv6 tcp sport { $TCP_SRC_GAME_PORTS } counter ip6 dscp set $DSCP_GAMING comment "Game ports to $DSCP_GAMING_COMMENT (TCP)"
+    meta nfproto ipv6 tcp dport { $TCP_DST_GAME_PORTS } counter ip6 dscp set $DSCP_GAMING comment "Game ports to $DSCP_GAMING_COMMENT (TCP)"
+    meta nfproto ipv6 udp sport { $UDP_SRC_GAME_PORTS } counter ip6 dscp set $DSCP_GAMING comment "Game ports to $DSCP_GAMING_COMMENT (UDP)"
+    meta nfproto ipv6 udp dport { $UDP_DST_GAME_PORTS } counter ip6 dscp set $DSCP_GAMING comment "Game ports to $DSCP_GAMING_COMMENT (UDP)"
+
+    # Bulk ports - Used for 'bulk traffic' such as "BitTorrent"
+    meta nfproto ipv6 tcp sport { $TCP_SRC_BULK_PORTS } counter ip6 dscp set cs1 comment "Bulk ports to CS1 (TCP)"
+    meta nfproto ipv6 tcp dport { $TCP_DST_BULK_PORTS } counter ip6 dscp set cs1 comment "Bulk ports to CS1 (TCP)"
+    meta nfproto ipv6 udp sport { $UDP_SRC_BULK_PORTS } counter ip6 dscp set cs1 comment "Bulk ports to CS1 (UDP)"
+    meta nfproto ipv6 udp dport { $UDP_DST_BULK_PORTS } counter ip6 dscp set cs1 comment "Bulk ports to CS1 (UDP)"
+
+    # Other ports [OPTIONAL] - Mark wherever you want
+    meta nfproto ipv6 tcp sport { $TCP_SRC_OTHER_PORTS } counter ip6 dscp set $DSCP_OTHER_PORTS comment "Other ports to $DSCP_OTHER_PORTS_COMMENT (TCP)"
+    meta nfproto ipv6 tcp dport { $TCP_DST_OTHER_PORTS } counter ip6 dscp set $DSCP_OTHER_PORTS comment "Other ports to $DSCP_OTHER_PORTS_COMMENT (TCP)"
+    meta nfproto ipv6 udp sport { $UDP_SRC_OTHER_PORTS } counter ip6 dscp set $DSCP_OTHER_PORTS comment "Other ports to $DSCP_OTHER_PORTS_COMMENT (UDP)"
+    meta nfproto ipv6 udp dport { $UDP_DST_OTHER_PORTS } counter ip6 dscp set $DSCP_OTHER_PORTS comment "Other ports to $DSCP_OTHER_PORTS_COMMENT (UDP)"
+
 }
 
 
@@ -964,6 +1057,14 @@ chain dscp_marking_ip_addresses_ipv4 {
     ip daddr { $IPV4_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 40, 41, 42, 43, 100 } counter ip dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
     ip saddr { $IPV4_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 40, 41, 42, 43, 100 } counter ip dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
 
+    # TorrentBox (Static IP) - Mark 'all traffic' as bulk
+    ip daddr { $IPV4_TORRENTBOX_STATIC_IP } counter ip dscp set cs1 comment "TorrentBox to CS1"
+    ip saddr { $IPV4_TORRENTBOX_STATIC_IP } counter ip dscp set cs1 comment "TorrentBox to CS1"
+
+    # Other static IP addresses [OPTIONAL] - Mark 'all traffic' wherever you want
+    ip daddr { $IPV4_OTHER_STATIC_IP } counter ip dscp set $DSCP_OTHER_STATIC_IP comment "Other static IP addresses to $DSCP_OTHER_STATIC_IP_COMMENT"
+    ip saddr { $IPV4_OTHER_STATIC_IP } counter ip dscp set $DSCP_OTHER_STATIC_IP comment "Other static IP addresses to $DSCP_OTHER_STATIC_IP_COMMENT"
+
 }
 
 
@@ -974,6 +1075,14 @@ chain dscp_marking_ip_addresses_ipv6 {
     # Game consoles (Static IP) - Will cover all ports (except ports 80, 443, 8080, Live Streaming and BitTorrent)
     ip6 daddr { $IPV6_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 70, 71, 72, 73, 110 } counter ip6 dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
     ip6 saddr { $IPV6_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 70, 71, 72, 73, 110 } counter ip6 dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
+
+    # TorrentBox (Static IP) - Mark 'all traffic' as bulk
+    ip6 daddr { $IPV6_TORRENTBOX_STATIC_IP } counter ip6 dscp set cs1 comment "TorrentBox to CS1"
+    ip6 saddr { $IPV6_TORRENTBOX_STATIC_IP } counter ip6 dscp set cs1 comment "TorrentBox to CS1"
+
+    # Other static IP addresses [OPTIONAL] - Mark 'all traffic' wherever you want
+    ip6 daddr { $IPV6_OTHER_STATIC_IP } counter ip6 dscp set $DSCP_OTHER_STATIC_IP comment "Other static IP addresses to $DSCP_OTHER_STATIC_IP_COMMENT"
+    ip6 saddr { $IPV6_OTHER_STATIC_IP } counter ip6 dscp set $DSCP_OTHER_STATIC_IP comment "Other static IP addresses to $DSCP_OTHER_STATIC_IP_COMMENT"
 
 }
 RULES
@@ -1043,6 +1152,124 @@ RULES
 
     ############################################################
 
+    ### Custom port rules ###
+
+    ## Game ports - Used by games
+    if [ "$TCP_SRC_GAME_PORTS" != "" ]; then
+        # Enable
+        grep "Game ports to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Game ports to" /tmp/00-rules.nft | sed '5q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$TCP_SRC_GAME_PORTS" = "" ]; then
+        # Disable
+        grep "Game ports to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Game ports to" /tmp/00-rules.nft | sed '5q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$TCP_DST_GAME_PORTS" != "" ]; then
+        # Enable
+        grep "Game ports to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Game ports to" /tmp/00-rules.nft | sed '6q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$TCP_DST_GAME_PORTS" = "" ]; then
+        # Disable
+        grep "Game ports to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Game ports to" /tmp/00-rules.nft | sed '6q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$UDP_SRC_GAME_PORTS" != "" ]; then
+        # Enable
+        grep "Game ports to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Game ports to" /tmp/00-rules.nft | sed '7q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$UDP_SRC_GAME_PORTS" = "" ]; then
+        # Disable
+        grep "Game ports to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Game ports to" /tmp/00-rules.nft | sed '7q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$UDP_DST_GAME_PORTS" != "" ]; then
+        # Enable
+        grep "Game ports to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Game ports to" /tmp/00-rules.nft | sed '8q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$UDP_DST_GAME_PORTS" = "" ]; then
+        # Disable
+        grep "Game ports to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Game ports to" /tmp/00-rules.nft | sed '8q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+
+    ## Bulk ports - Used for 'bulk traffic' such as "BitTorrent"
+    if [ "$TCP_SRC_BULK_PORTS" != "" ]; then
+        # Enable
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '5q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$TCP_SRC_BULK_PORTS" = "" ]; then
+        # Disable
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '5q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$TCP_DST_BULK_PORTS" != "" ]; then
+        # Enable
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '6q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$TCP_DST_BULK_PORTS" = "" ]; then
+        # Disable
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '6q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$UDP_SRC_BULK_PORTS" != "" ]; then
+        # Enable
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '7q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$UDP_SRC_BULK_PORTS" = "" ]; then
+        # Disable
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '7q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$UDP_DST_BULK_PORTS" != "" ]; then
+        # Enable
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '8q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$UDP_DST_BULK_PORTS" = "" ]; then
+        # Disable
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Bulk ports to" /tmp/00-rules.nft | sed '8q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+
+    ## Other ports [OPTIONAL] - Mark wherever you want
+    if [ "$TCP_SRC_OTHER_PORTS" != "" ]; then
+        # Enable
+        grep "Other ports to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other ports to" /tmp/00-rules.nft | sed '5q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$TCP_SRC_OTHER_PORTS" = "" ]; then
+        # Disable
+        grep "Other ports to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other ports to" /tmp/00-rules.nft | sed '5q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$TCP_DST_OTHER_PORTS" != "" ]; then
+        # Enable
+        grep "Other ports to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other ports to" /tmp/00-rules.nft | sed '6q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$TCP_DST_OTHER_PORTS" = "" ]; then
+        # Disable
+        grep "Other ports to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other ports to" /tmp/00-rules.nft | sed '6q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$UDP_SRC_OTHER_PORTS" != "" ]; then
+        # Enable
+        grep "Other ports to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other ports to" /tmp/00-rules.nft | sed '7q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$UDP_SRC_OTHER_PORTS" = "" ]; then
+        # Disable
+        grep "Other ports to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other ports to" /tmp/00-rules.nft | sed '7q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$UDP_DST_OTHER_PORTS" != "" ]; then
+        # Enable
+        grep "Other ports to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other ports to" /tmp/00-rules.nft | sed '8q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$UDP_DST_OTHER_PORTS" = "" ]; then
+        # Disable
+        grep "Other ports to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other ports to" /tmp/00-rules.nft | sed '8q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+
+    ############################################################
+
     ### IP address rules ###
 
     ## Game consoles (Static IP) - Will cover all ports (except ports 80, 443, 8080, Live Streaming and BitTorrent)
@@ -1063,6 +1290,46 @@ RULES
         # Disable
         grep "Game consoles to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game consoles to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
         grep "Game consoles to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game consoles to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+
+    ## TorrentBox (Static IP) - Mark 'all traffic' as bulk
+    if [ "$IPV4_TORRENTBOX_STATIC_IP" != "" ]; then
+        # Enable
+        grep "TorrentBox to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "TorrentBox to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$IPV4_TORRENTBOX_STATIC_IP" = "" ]; then
+        # Disable
+        grep "TorrentBox to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "TorrentBox to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$IPV6_TORRENTBOX_STATIC_IP" != "" ]; then
+        # Enable
+        grep "TorrentBox to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "TorrentBox to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$IPV6_TORRENTBOX_STATIC_IP" = "" ]; then
+        # Disable
+        grep "TorrentBox to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "TorrentBox to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+
+    ## Other static IP addresses [OPTIONAL] - Mark 'all traffic' wherever you want
+    if [ "$IPV4_OTHER_STATIC_IP" != "" ]; then
+        # Enable
+        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$IPV4_OTHER_STATIC_IP" = "" ]; then
+        # Disable
+        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    fi
+    if [ "$IPV6_OTHER_STATIC_IP" != "" ]; then
+        # Enable
+        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+    elif [ "$IPV6_OTHER_STATIC_IP" = "" ]; then
+        # Disable
+        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
+        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
     fi
 
     ############################################################
