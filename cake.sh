@@ -1,277 +1,145 @@
 #!/bin/sh
 ############################################################
 
-
 ### Interfaces ###
-
-## Go to "Network -> Interfaces" and write the name of the "device" used for the 'WAN' interface.
-WAN="pppoe-wan"  # Example: eth0, eth0.2, eth1, eth1.2, wan, etc.
-# Define LAN interface
-LAN="br-lan"
+WAN="pppoe-wan"     # Device used for the 'WAN' interface (e.g., eth0, eth1.2, wan, etc.)
+LAN="br-lan"        # Define LAN interface
 
 # Traffic shaping method
 DOWNSHAPING_METHOD="ctinfo"  # Options: "ctinfo", "lan"
 
-## "ctinfo" Uses connection tracking information to restore DSCP markings on incoming packets
-## "lan" Applies traffic shaping directly on the LAN interface, (ideal) for environments with a single interface directed towards the LAN.
+echo "Setting up cake.qos..."
 
-# Echo the current configuration of the shaping method
-echo "Setting up cake.qos....."
-
-######################################################################################################################
-
+############################################################
 
 ### CAKE settings ###
+BANDWIDTH_DOWN="800"   # ~80-95% of your download speed in Mbit
+BANDWIDTH_UP="100"     # ~80-95% of your upload speed in Mbit
 
-BANDWIDTH_DOWN="800"  # Change this to about 80-95% of your download speed (in megabits).
-BANDWIDTH_UP="100"     # Change this to about 80-95% of your upload speed (in megabits).
-                      # Do a Speed Test: https://www.speedtest.net/
-                      # Not recommendable: Write "0" in "BANDWIDTH_DOWN" or "BANDWIDTH_UP" to use 'CAKE' with no limit on the bandwidth ('unlimited' parameter).
-                      # Not recommendable: Don't write anything in "BANDWIDTH_DOWN" or "BANDWIDTH_UP" to disable 'shaping' on ingress or egress.
+AUTORATE_INGRESS="no"  # "yes" to enable CAKE's automatic ingress rate estimation
 
-AUTORATE_INGRESS="no"  # Write: "yes" | "no"
-                       # Enable CAKE automatic rate estimation for ingress.
-                       # For it to work you need to write your bandwidth in "BANDWIDTH_DOWN" to specify an initial estimate.
-                       # This is most likely to be useful with "cellular links", which tend to change quality randomly.
-                       # If you don't have "cellular link", you should never use this option.
+OVERHEAD="42"           # Between -64 and 256
+MPU="84"                # Between 0 and 256
+LINK_COMPENSATION=""    # "atm" | "ptm" | "noatm"
 
-## Make sure you set these parameters correctly for your connection type or don't write any value and use a presets or keywords below.
-OVERHEAD="42"           # Write values between "-64" and "256"
-MPU="84"                # Write values between "0" and "256"
-LINK_COMPENSATION=""  # Write: "atm" | "ptm" | "noatm"
-                      # These values overwrite the presets or keyboards below.
-                      # Read: https://openwrt.org/docs/guide-user/network/traffic-shaping/sqm#configuring_sqm
-                      # Read: https://openwrt.org/docs/guide-user/network/traffic-shaping/sqm-details#sqmlink_layer_adaptation_tab
+# If above values are unset, you can use one of the presets below
+COMMON_LINK_PRESETS="raw"
 
-## Only use these presets or keywords if you don't write a value above in "OVERHEAD", "MPU" and "LINK_COMPENSATION".
-COMMON_LINK_PRESETS="raw"  # Write the keyword below:
-                                    # "raw"              Failsafe     (Turns off all overhead compensation)
-                                    # "conservative"     Failsafe     (overhead 48 - atm)
-                                    # "ethernet"         Ethernet     (overhead 38 - mpu 84 - noatm)
-                                    # "docsis"           Cable Modem  (overhead 18 - mpu 64 - noatm)
-                                    # "pppoe-ptm"        VDSL2        (overhead 30 - ptm)
-                                    # "bridged-ptm"      VDSL2        (overhead 22 - ptm)
-                                    # "pppoa-vcmux"      ADSL         (overhead 10 - atm)
-                                    # "pppoa-llc"        ADSL         (overhead 14 - atm)
-                                    # "pppoe-vcmux"      ADSL         (overhead 32 - atm)
-                                    # "pppoe-llcsnap"    ADSL         (overhead 40 - atm)
-                                    # "bridged-vcmux"    ADSL         (overhead 24 - atm)
-                                    # "bridged-llcsnap"  ADSL         (overhead 32 - atm)
-                                    # "ipoa-vcmux"       ADSL         (overhead 8  - atm)
-                                    # "ipoa-llcsnap"     ADSL         (overhead 16 - atm)
-                                    # If you are unsure, then write "conservative" as a general safe value.
-                                    # These keywords have been provided to represent a number of common link technologies.
-                                    ######################################################################################
-                                    # For true ATM links (ADSL), one often can measure the real per-packet overhead empirically,
-                                    # see: https://github.com/moeller0/ATM_overhead_detector for further information how to do that.
+ETHER_VLAN_KEYWORD=""   # "1" to "3" for 4, 8, or 12 bytes VLAN overhead
 
-## This keyword is not for standalone use, but act as a modifier to some previous presets or keywords.
-ETHER_VLAN_KEYWORD=""  # Write values between "1" and "3" or don't write any value.
-                       # In addition to those previous presets or keywords it is common to have VLAN tags (4 extra bytes) or PPPoE encapsulation (8 extra bytes).
-                       # "1" Adds '4 bytes' to the overhead  (ether-vlan)
-                       # "2" Adds '8 bytes' to the overhead  (ether-vlan ether-vlan)
-                       # "3" Adds '12 bytes' to the overhead (ether-vlan ether-vlan ether-vlan)
-                       # This keyword "ether-vlan" may be repeated as necessary in 'EXTRA PARAMETERS'.
-                       # Read: https://man7.org/linux/man-pages/man8/tc-cake.8.html#OVERHEAD_COMPENSATION_PARAMETERS
+PRIORITY_QUEUE_INGRESS="diffserv4"  # "besteffort" | "diffserv3" | "diffserv4" | "diffserv8"
+PRIORITY_QUEUE_EGRESS="diffserv4"
 
-PRIORITY_QUEUE_INGRESS="diffserv4"  # Write: "besteffort" | "diffserv3" | "diffserv4" | "diffserv8"
-PRIORITY_QUEUE_EGRESS="diffserv4"   # Write: "besteffort" | "diffserv3" | "diffserv4" | "diffserv8"
-                                    # CAKE can divide traffic into tins based on the Diffserv field.
-                                    # "besteffort" only has 'one tin' or priority tier.
-                                    # "diffserv3" has '3 tins' or different priority tiers.
-                                    # "diffserv4" has '4 tins' or different priority tiers. <- Recommended
-                                    # "diffserv8" has '8 tins' or different priority tiers.
+HOST_ISOLATION="no"     # "yes" enables host isolation to prevent bandwidth hogging
 
-HOST_ISOLATION="no"  # Write: "yes" | "no"
-                      # Host Isolation or 'dual-dsthost' (ingress) and 'dual-srchost' (egress), prevents a single host/client
-                      # that has multiple connections (like when torrenting) from hogging all the bandwidth
-                      # and provides better traffic management when multiple hosts/clients are using the internet at the same time.
+NAT_INGRESS="yes"       # Enables NAT fairness on ingress
+NAT_EGRESS="yes"        # Enables NAT fairness on egress
 
-NAT_INGRESS="yes"  # Write: "yes" | "no"
-NAT_EGRESS="yes"  # Write: "yes" | "no"
-                  # Perform a NAT lookup before applying 'host isolation' rules to improve fairness between hosts "inside" the NAT.
-                  # Don't use "nat" parameter on 'ingress' when use "veth method" or 'host isolation' stops working.
-                  ## Recommendation: Don't use "nat" on 'ingress' and only use "nat" on 'egress'.
+WASH_INGRESS="no"       # "yes" clears DSCP marks on ingress
+WASH_EGRESS="yes"       # "yes" clears DSCP marks on egress
 
-WASH_INGRESS="no"  # Write: "yes" | "no"
-WASH_EGRESS="yes"  # Write: "yes" | "no"
-                   # "wash" only clears all DSCP marks after the traffic has been tinned.
-                   # Don't wash incoming (ingress) DSCP marks, because also wash the custom DSCP marking from the script and the script already washes the ISP marks.
-                   # Wash outgoing (egress) DSCP marking to ISP, because may be mis-marked from ISP perspective.
-                   ## Recommendation: Don't use "wash" on ingress so that the "Wi-Fi Multimedia (WMM) QoS" can make use of the custom DSCP marking and just use "wash" on egress.
+INGRESS_MODE="no"       # Enables more aggressive dropping to maintain fairness
 
-INGRESS_MODE="no"  # Write: "yes" | "no"
-                    # Enabling "ingress mode" ('ingress' parameter) will tune the AQM to always keep at least two packets queued *for each flow*.
-                    # Basically will drop and/or delay packets in a way that the rate of packets leaving the shaper is smaller or equal to the configured shaper-rate.
-                    # This leads to slightly more aggressive dropping, but this also ameliorates one issue we have with post-bottleneck shaping,
-                    # namely the inherent dependency of the required bandwidth "sacrifice" with the expected number of concurrent bulk flows.
-                    # Thus, being more lenient and keeping a minimum number of packets queued will improve throughput in cases
-                    # where the number of active flows are so large that they saturate the bottleneck even at their minimum window size.
+ACK_FILTER_EGRESS="auto"  # "yes" | "no" | "auto" – only applies to egress
 
-ACK_FILTER_EGRESS="auto"  # Write: "yes" | "no" | "auto"
-                          # Write "auto" or don't write anything, so that the script decide to use this parameter, depending on the bandwidth you wrote in "BANDWIDTH_DOWN" and "BANDWIDTH_UP".
-                          # If your up/down bandwidth is at least 1x15 asymmetric, you can try the 'ack-filter' option.
-                          # It doesn't help on your downlink, nor on symmetric links.
-                          # 'ack-filter' only makes sense for "egress", so don't add 'ack-filter' keyword for the "ingress" side.
-                          # Don't recommend turning it on more symmetrical link bandwidths the effect is negligible at best.
+RTT=""  # Optional RTT shaping window in ms (e.g., 40–300)
 
-## Don't write 'ms', just write the number.
-RTT=""  # Write values between "1" and "1000" or don't write any value to use the default value (100).
-        # This parameter defines the time window that your shaper will give the endpoints to react to shaping signals (drops or ECN).
-        # The default "100ms" is pretty decent that works for many people, assuming their packets don't always need to cross long distances.
-        # If you are based in Europe and access data in California I would assume 200-300ms to be a better value.
-        # The general trade off is higher RTTs cause higher bandwidth utilization at the cost of increased latency under load (or rather longer settling times).
-        # If your game servers are "40ms" RTT away, you should configure CAKE accordingly (this will lead to some bandwidth sacrifices for flows with a longer RTT).
-        # Again setting RTT too high will increase the latency under load (aka the bufferbloat) while increasing bandwidth utilization.
-        # You should measure the RTT for CAKE while your network is not loaded.
-        # Use ping to measure the Round Trip Time (RTT) on servers you normally connect.
-        # Example: ping -c 20 openwrt.org (Linux)
-        # Example: ping -n 20 openwrt.org (Windows)
+EXTRA_PARAMETERS_INGRESS="memlimit 32mb"  # Custom cake parameters
+EXTRA_PARAMETERS_EGRESS="memlimit 32mb"
 
-EXTRA_PARAMETERS_INGRESS="memlimit 32mb"  # Add any custom parameters separated by spaces.
-EXTRA_PARAMETERS_EGRESS="memlimit 32mb"   # Add any custom parameters separated by spaces.
-                             # These will be appended to the end of the CAKE options and take priority over the options above.
-                             # There is no validation done on these options. Use carefully!
-                             # Look: https://man7.org/linux/man-pages/man8/tc-cake.8.html
-
-
-######################################################################################################################
-
+############################################################
 
 ### Rules settings ###
+CHAIN="FORWARD"         # Default chain for nftables rules
 
+DSCP_ICMP="CS0"         # DSCP value for ICMP traffic
+DSCP_GAMING="CS4"       # DSCP value for game traffic
 
-## Default chain for the rules
-CHAIN="FORWARD"  # Write: "FORWARD" | "POSTROUTING"
-
-
-## DSCP values for the rules
-DSCP_ICMP="CS0"    # Change the DSCP value for ICMP (aka ping) to whatever you want.
-DSCP_GAMING="CS4"  # You can test changing the DSCP value for games from "CS4" to "EF" or whatever you want.
-
-## Use known rules [OPTIONAL]
-BROADCAST_VIDEO="no"          # Write: "yes" | "no" (Known 'Live Streaming' ports to CS3 like YouTube Live, Twitch, Vimeo and LinkedIn Live)
-GAMING="no"                   # Write: "yes" | "no" (Known 'Game' ports and 'Game consoles' ports to CS4 like Xbox, PlayStation, Call of Duty, FIFA, Minecraft and Supercell Games)
-GAME_STREAMING="no"           # Write: "yes" | "no" (Known 'Game Streaming' ports to AF42 like NVIDIA GeForce NOW)
-MULTIMEDIA_CONFERENCING="no"  # Write: "yes" | "no" (Known 'Video conferencing' ports to AF41 like Zoom, Microsoft Teams, Skype, FaceTime, GoToMeeting, Webex Meeting, Jitsi Meet, Google Meet and TeamViewer)
-TELEPHONY="no"                # Write: "yes" | "no" (Known 'VoIP' and 'VoWiFi' ports to EF)
-
-                               # These 4 known port rules are optional.
-                               # Only use these rules if you need to prioritize the "specified" traffic
-                               # or you can stop using these rules without problems.
+# Known rules (optional)
+BROADCAST_VIDEO="no"           # YouTube Live, Twitch, Vimeo, etc. to CS3
+GAMING="no"                    # Xbox, PS, CoD, FIFA, etc. to CS4
+GAME_STREAMING="no"            # NVIDIA GeForce NOW, etc. to AF42
+MULTIMEDIA_CONFERENCING="no"   # Zoom, Teams, Skype, etc. to AF41
+TELEPHONY="no"                 # VoIP apps like WhatsApp, Discord, etc.
 
 
 ############################################################
 
-
 ### Ports settings ###
 
-## Don't add ports "80", "443", "8080" and "1935" below, because there are already rules for these ports.
-## You can delete the ports below, because are just examples.
+## Don't add ports "80", "443", "8080", and "1935" below — rules for them already exist.
+## You may delete the sample ports below if not needed.
 
-
-## Game ports (The script already has rules to prioritize "non-bulk" unmarked traffic like gaming and VoIP, which means that adding game ports is optional)
+## Game ports (prioritized automatically if unmarked)
 TCP_SRC_GAME_PORTS=""
 TCP_DST_GAME_PORTS=""
-
 UDP_SRC_GAME_PORTS=""
 UDP_DST_GAME_PORTS=""
                     ## "SRC" = Source port | "DST" = Destination port
-                    # Define a list of TCP and UDP ports used by games.
-                    # Use a comma to separate the values or ranges A-B as shown.
-
+                    # Optional: Add specific TCP/UDP ports used by games.
+                    # Use commas to separate values or ranges (e.g., 27000-27030).
 
 ## Bulk ports
 TCP_SRC_BULK_PORTS=""
 TCP_DST_BULK_PORTS=""
-
 UDP_SRC_BULK_PORTS=""
 UDP_DST_BULK_PORTS=""
-                    ## "SRC" = Source port | "DST" = Destination port
-                    # Define a list of TCP and UDP ports used for 'bulk traffic' such as "BitTorrent".
-                    # Set your "BitTorrent" client to use a known port and include it here.
-                    # Use a comma to separate the values or ranges A-B as shown.
-
+                    ## For bulk traffic like BitTorrent.
+                    # Set known BitTorrent ports and define them here.
+                    # Use commas or port ranges A-B.
 
 ## Other ports [OPTIONAL]
-DSCP_OTHER_PORTS="CS0"  # Change this DSCP value to whatever you want.
+DSCP_OTHER_PORTS="CS0"  # DSCP value for 'other' ports.
 
 TCP_SRC_OTHER_PORTS=""
 TCP_DST_OTHER_PORTS=""
-
 UDP_SRC_OTHER_PORTS=""
 UDP_DST_OTHER_PORTS=""
-                     ## "SRC" = Source port | "DST" = Destination port
-                     # Define a list of TCP and UDP ports to mark wherever you want.
-                     # Use a comma to separate the values or ranges A-B as shown.
-
+                    ## Custom port-based DSCP marking.
+                    # Define TCP/UDP ports to mark with the DSCP value above.
 
 ############################################################
 
-
 ### IP address settings ###
 
-## To add static IP addresses in OpenWrt go to "Network -> DHCP and DNS -> Static Leases -> Click on 'Add'".
-## You can delete the IP addresses below, because are just examples.
+## Define static IPs via OpenWrt UI: Network → DHCP and DNS → Static Leases
 
-
-## Game consoles (Static IP)
+## Game consoles (Static IPs)
 IPV4_GAME_CONSOLES_STATIC_IP="192.168.1.200-192.168.1.201"
-                              # Define a list of IPv4 addresses that will cover all ports (except ports 80, 443, 8080, Live Streaming and BitTorrent).
-                              # Write a single IPv4 address or ranges of IPv4 addresses A-B and use a comma to separate them as shown.
-                              # The IPv4 address ranges "192.168.1.20-192.168.1.25" will cover IPv4 addresses from '192.168.1.20' to '192.168.1.25'
-
-
 IPV6_GAME_CONSOLES_STATIC_IP="IPv6::200-IPv6::201"
-                              # Write the IPv6 address or simply write "IPv6::" to automatically add the IPv6 address of your router
-                              # and just change the number "15" (or IP address ranges '20' and '25') to the last number of the static IPv4 of your console.
-                              # To add an IPv6 address, simply change the number after the double colon "::" for the last number of your static IPv4 address.
-                              # The last number "::15" is the static IPv4 address of '192.168.x.15'
-                              # The IPv6 address ranges "::20-::25" will cover static IPv4 addresses from '192.168.x.20' to '192.168.x.25'
+                    # Mark all traffic from these IPs (except for exempt ports) as gaming.
+                    # Supports single IP or range (A-B), comma-separated.
 
-## TorrentBox (Static IP)
+## TorrentBox (Static IPs)
 IPV4_TORRENTBOX_STATIC_IP=""
-                           # Define a list of IPv4 addresses to mark 'all traffic' as bulk.
-                           # Write a single IPv4 address or ranges of IPv4 addresses A-B and use a comma to separate them as shown.
-
 IPV6_TORRENTBOX_STATIC_IP=""
-                           # Write the IPv6 address or simply write "IPv6::" to automatically add the IPv6 address of your router
-                           # and just change the number "10" to the last number of the static IPv4.
-                           # To add an IPv6 address, simply change the number after the double colon "::" for the last number of your static IPv4 address.
-                           # The last number "::10" is the static IPv4 address of '192.168.x.10'
-
+                    # Mark all traffic from these IPs as bulk.
+                    # Supports IPv4/IPv6 ranges as above.
 
 ## Other static IP addresses [OPTIONAL]
-DSCP_OTHER_STATIC_IP=""  # Change this DSCP value to whatever you want.
-
+DSCP_OTHER_STATIC_IP="CS0"  # DSCP value to use for marking below IPs.
 IPV4_OTHER_STATIC_IP=""
 IPV6_OTHER_STATIC_IP=""
-                      # Define a list of IP addresses to mark 'all traffic' wherever you want.
-                      # Write a single IPv4 and IPv6 address or ranges of IP addresses A-B and use a comma to separate them as shown.
-
+                    # Mark all traffic from these IPs with the defined DSCP value.
+                    # Supports IP ranges, comma-separated.
 
 ######################################################################################################################
 
-
 ### Change default OpenWrt settings ###
 
-DEFAULT_QDISC="fq_codel"  # Write: "fq_codel" | "cake"
-                          # "fq_codel" Great all around qdisc. (Default in OpenWrt)
-                          # "cake"     Great for WAN links, but computationally expensive with little advantages over 'fq_codel' for LAN links.
+DEFAULT_QDISC="fq_codel"  # Options: "fq_codel" | "cake"
+                          # fq_codel = Good general-purpose scheduler (OpenWrt default)
+                          # cake     = Best for WAN shaping, heavier CPU usage
 
+TCP_CONGESTION_CONTROL="bbr"  # Options: "cubic" | "bbr"
+                              # bbr = Google's congestion algorithm (used on YouTube)
+                              # cubic = Default on most Linux systems
 
-TCP_CONGESTION_CONTROL="bbr"  # Write: "cubic" | "bbr"
-                                # "cubic" The default algorithm for most Linux platforms. (Default in OpenWrt)
-                                # "bbr"   The algorithm that was developed by Google and is since used on YouTube, maybe this can improve network response.
+ECN="2"  # Explicit Congestion Notification: 0=disable, 1=initiate/accept, 2=accept only
+         # See: https://www.bufferbloat.net/projects/cerowrt/wiki/Enable_ECN/
 
+######################################################################################################################
 
-ECN="2"  # Write values between "0" and "2"
-         # "0" Disable ECN. Neither initiate nor accept ECN.
-         # "1" Enable ECN. When requested by incoming connections and also request ECN on outgoing connection attempts.
-         # "2" Enable ECN. When requested by incoming connections, but do not request ECN on outgoing connections. (Default in OpenWrt)
-         # Read: https://www.bufferbloat.net/projects/cerowrt/wiki/Enable_ECN/
-
-#####################################################################################################################
 
 #########################      #########################      #########################      #########################
 ### DO NOT EDIT BELOW ###      ### DO NOT EDIT BELOW ###      ### DO NOT EDIT BELOW ###      ### DO NOT EDIT BELOW ###
@@ -696,8 +564,10 @@ stop_service() {
 	tc qdisc del dev $LAN root > /dev/null 2>&1
 	tc qdisc del dev br-lan root > /dev/null 2>&1
 
-    ## Delete IFB
-    ip link del ifb-$WAN 2>/dev/null
+	# Delete the IFB device
+	# Remove ingress qdisc on $WAN
+	tc qdisc del dev $WAN ingress 2>/dev/null
+	ip link del ifb-$WAN 2>/dev/null
 
     ############################################################
 
