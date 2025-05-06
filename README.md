@@ -13,7 +13,7 @@
 ## Install
 Copy and paste this into your SSH client:
 ```
-rm -f /root/cake.sh && rm -f /etc/init.d/cake && rm -f /etc/hotplug.d/iface/99-cake && rm -f /etc/nftables.d/*-rules.nft && wget -O /root/cake.sh https://raw.githubusercontent.com/choppyc79/CAKE-QoS-Script-OpenWrt/main/cake.sh && chmod 755 /root/cake.sh && sh /root/cake.sh
+rm -f /root/cake.sh && rm -f /etc/init.d/cake && rm -f /etc/hotplug.d/iface/99-cake && rm -f /etc/nftables.d/*-rules.nft && wget -O /root/cake.sh https://raw.githubusercontent.com/choppyc79/CAKE-QoS-Script-OpenWrt/main/cake.sh && chmod 755 /root/cake.sh
 
 ```
 The **`cake.sh`** script is located in the **`/root/`** folder on the router and you have to edit this - it will install with the deafult settings, these can be changed below - 
