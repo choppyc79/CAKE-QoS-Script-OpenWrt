@@ -1,296 +1,145 @@
 #!/bin/sh
 ############################################################
 
-
 ### Interfaces ###
+WAN="pppoe-wan"     # Device used for the 'WAN' interface (e.g., eth0, eth1.2, wan, etc.)
+LAN="br-lan"        # Define LAN interface
 
-## Go to "Network -> Interfaces" and write the name of the "device" used for the 'WAN' interface.
-WAN="eth1"  # Example: eth0, eth0.2, eth1, eth1.2, wan, etc.
+# Traffic shaping method
+DOWNSHAPING_METHOD="ctinfo"  # Options: "ctinfo", "lan"
 
-DOWNSHAPING_METHOD="ctinfo" # Options: "veth", "ctinfo"
-
-## "ctinfo"  Uses connection tracking information to restore DSCP markings on incoming packets
-## "veth" Utilizes a virtual Ethernet pair to control incoming traffic
-
-######################################################################################################################
-
-
-### CAKE settings ###
-
-BANDWIDTH_DOWN="340"  # Change this to about 80-95% of your download speed (in megabits).
-BANDWIDTH_UP="50"     # Change this to about 80-95% of your upload speed (in megabits).
-                      # Do a Speed Test: https://www.speedtest.net/
-                      # Not recommendable: Write "0" in "BANDWIDTH_DOWN" or "BANDWIDTH_UP" to use 'CAKE' with no limit on the bandwidth ('unlimited' parameter).
-                      # Not recommendable: Don't write anything in "BANDWIDTH_DOWN" or "BANDWIDTH_UP" to disable 'shaping' on ingress or egress.
-
-AUTORATE_INGRESS="no"  # Write: "yes" | "no"
-                       # Enable CAKE automatic rate estimation for ingress.
-                       # For it to work you need to write your bandwidth in "BANDWIDTH_DOWN" to specify an initial estimate.
-                       # This is most likely to be useful with "cellular links", which tend to change quality randomly.
-                       # If you don't have "cellular link", you should never use this option.
-
-## Make sure you set these parameters correctly for your connection type or don't write any value and use a presets or keywords below.
-OVERHEAD=""           # Write values between "-64" and "256"
-MPU=""                # Write values between "0" and "256"
-LINK_COMPENSATION=""  # Write: "atm" | "ptm" | "noatm"
-                      # These values overwrite the presets or keyboards below.
-                      # Read: https://openwrt.org/docs/guide-user/network/traffic-shaping/sqm#configuring_sqm
-                      # Read: https://openwrt.org/docs/guide-user/network/traffic-shaping/sqm-details#sqmlink_layer_adaptation_tab
-
-## Only use these presets or keywords if you don't write a value above in "OVERHEAD", "MPU" and "LINK_COMPENSATION".
-COMMON_LINK_PRESETS="conservative"  # Write the keyword below:
-                                    # "raw"              Failsafe     (Turns off all overhead compensation)
-                                    # "conservative"     Failsafe     (overhead 48 - atm)
-                                    # "ethernet"         Ethernet     (overhead 38 - mpu 84 - noatm)
-                                    # "docsis"           Cable Modem  (overhead 18 - mpu 64 - noatm)
-                                    # "pppoe-ptm"        VDSL2        (overhead 30 - ptm)
-                                    # "bridged-ptm"      VDSL2        (overhead 22 - ptm)
-                                    # "pppoa-vcmux"      ADSL         (overhead 10 - atm)
-                                    # "pppoa-llc"        ADSL         (overhead 14 - atm)
-                                    # "pppoe-vcmux"      ADSL         (overhead 32 - atm)
-                                    # "pppoe-llcsnap"    ADSL         (overhead 40 - atm)
-                                    # "bridged-vcmux"    ADSL         (overhead 24 - atm)
-                                    # "bridged-llcsnap"  ADSL         (overhead 32 - atm)
-                                    # "ipoa-vcmux"       ADSL         (overhead 8  - atm)
-                                    # "ipoa-llcsnap"     ADSL         (overhead 16 - atm)
-                                    # If you are unsure, then write "conservative" as a general safe value.
-                                    # These keywords have been provided to represent a number of common link technologies.
-                                    ######################################################################################
-                                    # For true ATM links (ADSL), one often can measure the real per-packet overhead empirically,
-                                    # see: https://github.com/moeller0/ATM_overhead_detector for further information how to do that.
-
-## This keyword is not for standalone use, but act as a modifier to some previous presets or keywords.
-ETHER_VLAN_KEYWORD=""  # Write values between "1" and "3" or don't write any value.
-                       # In addition to those previous presets or keywords it is common to have VLAN tags (4 extra bytes) or PPPoE encapsulation (8 extra bytes).
-                       # "1" Adds '4 bytes' to the overhead  (ether-vlan)
-                       # "2" Adds '8 bytes' to the overhead  (ether-vlan ether-vlan)
-                       # "3" Adds '12 bytes' to the overhead (ether-vlan ether-vlan ether-vlan)
-                       # This keyword "ether-vlan" may be repeated as necessary in 'EXTRA PARAMETERS'.
-                       # Read: https://man7.org/linux/man-pages/man8/tc-cake.8.html#OVERHEAD_COMPENSATION_PARAMETERS
-
-PRIORITY_QUEUE_INGRESS="diffserv4"  # Write: "besteffort" | "diffserv3" | "diffserv4" | "diffserv8"
-PRIORITY_QUEUE_EGRESS="diffserv4"   # Write: "besteffort" | "diffserv3" | "diffserv4" | "diffserv8"
-                                    # CAKE can divide traffic into tins based on the Diffserv field.
-                                    # "besteffort" only has 'one tin' or priority tier.
-                                    # "diffserv3" has '3 tins' or different priority tiers.
-                                    # "diffserv4" has '4 tins' or different priority tiers. <- Recommended
-                                    # "diffserv8" has '8 tins' or different priority tiers.
-
-HOST_ISOLATION="yes"  # Write: "yes" | "no"
-                      # Host Isolation or 'dual-dsthost' (ingress) and 'dual-srchost' (egress), prevents a single host/client
-                      # that has multiple connections (like when torrenting) from hogging all the bandwidth
-                      # and provides better traffic management when multiple hosts/clients are using the internet at the same time.
-
-NAT_INGRESS="no"  # Write: "yes" | "no"
-NAT_EGRESS="yes"  # Write: "yes" | "no"
-                  # Perform a NAT lookup before applying 'host isolation' rules to improve fairness between hosts "inside" the NAT.
-                  # Don't use "nat" parameter on 'ingress' when use "veth method" or 'host isolation' stops working.
-                  ## Recommendation: Don't use "nat" on 'ingress' and only use "nat" on 'egress'.
-
-WASH_INGRESS="no"  # Write: "yes" | "no"
-WASH_EGRESS="yes"  # Write: "yes" | "no"
-                   # "wash" only clears all DSCP marks after the traffic has been tinned.
-                   # Don't wash incoming (ingress) DSCP marks, because also wash the custom DSCP marking from the script and the script already washes the ISP marks.
-                   # Wash outgoing (egress) DSCP marking to ISP, because may be mis-marked from ISP perspective.
-                   ## Recommendation: Don't use "wash" on ingress so that the "Wi-Fi Multimedia (WMM) QoS" can make use of the custom DSCP marking and just use "wash" on egress.
-
-INGRESS_MODE="yes"  # Write: "yes" | "no"
-                    # Enabling "ingress mode" ('ingress' parameter) will tune the AQM to always keep at least two packets queued *for each flow*.
-                    # Basically will drop and/or delay packets in a way that the rate of packets leaving the shaper is smaller or equal to the configured shaper-rate.
-                    # This leads to slightly more aggressive dropping, but this also ameliorates one issue we have with post-bottleneck shaping,
-                    # namely the inherent dependency of the required bandwidth "sacrifice" with the expected number of concurrent bulk flows.
-                    # Thus, being more lenient and keeping a minimum number of packets queued will improve throughput in cases
-                    # where the number of active flows are so large that they saturate the bottleneck even at their minimum window size.
-
-ACK_FILTER_EGRESS="auto"  # Write: "yes" | "no" | "auto"
-                          # Write "auto" or don't write anything, so that the script decide to use this parameter, depending on the bandwidth you wrote in "BANDWIDTH_DOWN" and "BANDWIDTH_UP".
-                          # If your up/down bandwidth is at least 1x15 asymmetric, you can try the 'ack-filter' option.
-                          # It doesn't help on your downlink, nor on symmetric links.
-                          # 'ack-filter' only makes sense for "egress", so don't add 'ack-filter' keyword for the "ingress" side.
-                          # Don't recommend turning it on more symmetrical link bandwidths the effect is negligible at best.
-
-## Don't write 'ms', just write the number.
-RTT=""  # Write values between "1" and "1000" or don't write any value to use the default value (100).
-        # This parameter defines the time window that your shaper will give the endpoints to react to shaping signals (drops or ECN).
-        # The default "100ms" is pretty decent that works for many people, assuming their packets don't always need to cross long distances.
-        # If you are based in Europe and access data in California I would assume 200-300ms to be a better value.
-        # The general trade off is higher RTTs cause higher bandwidth utilization at the cost of increased latency under load (or rather longer settling times).
-        # If your game servers are "40ms" RTT away, you should configure CAKE accordingly (this will lead to some bandwidth sacrifices for flows with a longer RTT).
-        # Again setting RTT too high will increase the latency under load (aka the bufferbloat) while increasing bandwidth utilization.
-        # You should measure the RTT for CAKE while your network is not loaded.
-        # Use ping to measure the Round Trip Time (RTT) on servers you normally connect.
-        # Example: ping -c 20 openwrt.org (Linux)
-        # Example: ping -n 20 openwrt.org (Windows)
-
-EXTRA_PARAMETERS_INGRESS=""  # Add any custom parameters separated by spaces.
-EXTRA_PARAMETERS_EGRESS=""   # Add any custom parameters separated by spaces.
-                             # These will be appended to the end of the CAKE options and take priority over the options above.
-                             # There is no validation done on these options. Use carefully!
-                             # Look: https://man7.org/linux/man-pages/man8/tc-cake.8.html
-
-
-######################################################################################################################
-
-
-### Rules settings ###
-
-
-## Default chain for the rules
-CHAIN="FORWARD"  # Write: "FORWARD" | "POSTROUTING"
-
-
-## DSCP values for the rules
-DSCP_ICMP="CS0"    # Change the DSCP value for ICMP (aka ping) to whatever you want.
-DSCP_GAMING="CS4"  # You can test changing the DSCP value for games from "CS4" to "EF" or whatever you want.
-
-
-## Use known rules [OPTIONAL]
-BROADCAST_VIDEO="yes"          # Write: "yes" | "no" (Known 'Live Streaming' ports to CS3 like YouTube Live, Twitch, Vimeo and LinkedIn Live)
-GAMING="yes"                   # Write: "yes" | "no" (Known 'Game' ports and 'Game consoles' ports to CS4 like Xbox, PlayStation, Call of Duty, FIFA, Minecraft and Supercell Games)
-GAME_STREAMING="yes"           # Write: "yes" | "no" (Known 'Game Streaming' ports to AF42 like NVIDIA GeForce NOW)
-MULTIMEDIA_CONFERENCING="yes"  # Write: "yes" | "no" (Known 'Video conferencing' ports to AF41 like Zoom, Microsoft Teams, Skype, FaceTime, GoToMeeting, Webex Meeting, Jitsi Meet, Google Meet and TeamViewer)
-TELEPHONY="yes"                # Write: "yes" | "no" (Known 'VoIP' and 'VoWiFi' ports to EF)
-
-                               # These 4 known port rules are optional.
-                               # Only use these rules if you need to prioritize the "specified" traffic
-                               # or you can stop using these rules without problems.
-
+echo "Setting up cake.qos..."
 
 ############################################################
 
+### CAKE settings ###
+BANDWIDTH_DOWN="800"   # ~80-95% of your download speed in Mbit
+BANDWIDTH_UP="100"     # ~80-95% of your upload speed in Mbit
+
+AUTORATE_INGRESS="no"  # "yes" to enable CAKE's automatic ingress rate estimation
+
+OVERHEAD="42"           # Between -64 and 256
+MPU="84"                # Between 0 and 256
+LINK_COMPENSATION=""    # "atm" | "ptm" | "noatm"
+
+# If above values are unset, you can use one of the presets below
+COMMON_LINK_PRESETS="raw"
+
+ETHER_VLAN_KEYWORD=""   # "1" to "3" for 4, 8, or 12 bytes VLAN overhead enter (ether-vlan)
+
+PRIORITY_QUEUE_INGRESS="diffserv4"  # "besteffort" | "diffserv3" | "diffserv4" | "diffserv8"
+PRIORITY_QUEUE_EGRESS="diffserv4"
+
+HOST_ISOLATION="no"     # "yes" enables host isolation to prevent bandwidth hogging
+
+NAT_INGRESS="yes"       # Enables NAT fairness on ingress
+NAT_EGRESS="yes"        # Enables NAT fairness on egress
+
+WASH_INGRESS="no"       # "yes" clears DSCP marks on ingress
+WASH_EGRESS="yes"       # "yes" clears DSCP marks on egress
+
+INGRESS_MODE="no"       # Enables more aggressive dropping to maintain fairness
+
+ACK_FILTER_EGRESS="auto"  # "yes" | "no" | "auto" – only applies to egress
+
+RTT=""  # Optional RTT shaping window in ms (e.g., 40–300)
+
+EXTRA_PARAMETERS_INGRESS="memlimit 32mb"  # Custom cake parameters
+EXTRA_PARAMETERS_EGRESS="memlimit 32mb"
+
+############################################################
+
+### Rules settings ###
+CHAIN="FORWARD"         # Default chain for nftables rules
+
+DSCP_ICMP="CS0"         # DSCP value for ICMP traffic
+DSCP_GAMING="CS4"       # DSCP value for game traffic
+
+# Known rules (optional)
+BROADCAST_VIDEO="no"           # YouTube Live, Twitch, Vimeo, etc. to CS3
+GAMING="no"                    # Xbox, PS, CoD, FIFA, etc. to CS4
+GAME_STREAMING="no"            # NVIDIA GeForce NOW, etc. to AF42
+MULTIMEDIA_CONFERENCING="no"   # Zoom, Teams, Skype, etc. to AF41
+TELEPHONY="no"                 # VoIP apps like WhatsApp, Discord, etc.
+
+
+############################################################
 
 ### Ports settings ###
 
-## Don't add ports "80", "443", "8080" and "1935" below, because there are already rules for these ports.
-## You can delete the ports below, because are just examples.
+## Don't add ports "80", "443", "8080", and "1935" below — rules for them already exist.
+## You may delete the sample ports below if not needed.
 
-
-## Game ports (The script already has rules to prioritize "non-bulk" unmarked traffic like gaming and VoIP, which means that adding game ports is optional)
+## Game ports (prioritized automatically if unmarked)
 TCP_SRC_GAME_PORTS=""
 TCP_DST_GAME_PORTS=""
-
 UDP_SRC_GAME_PORTS=""
 UDP_DST_GAME_PORTS=""
                     ## "SRC" = Source port | "DST" = Destination port
-                    # Define a list of TCP and UDP ports used by games.
-                    # Use a comma to separate the values or ranges A-B as shown.
-
+                    # Optional: Add specific TCP/UDP ports used by games.
+                    # Use commas to separate values or ranges (e.g., 27000-27030).
 
 ## Bulk ports
-TCP_SRC_BULK_PORTS="6881-6887, 51413"
-TCP_DST_BULK_PORTS="6881-6887, 51413"
-
-UDP_SRC_BULK_PORTS="6881-6887, 51413"
-UDP_DST_BULK_PORTS="6881-6887, 51413"
-                    ## "SRC" = Source port | "DST" = Destination port
-                    # Define a list of TCP and UDP ports used for 'bulk traffic' such as "BitTorrent".
-                    # Set your "BitTorrent" client to use a known port and include it here.
-                    # Use a comma to separate the values or ranges A-B as shown.
-
+TCP_SRC_BULK_PORTS=""
+TCP_DST_BULK_PORTS=""
+UDP_SRC_BULK_PORTS=""
+UDP_DST_BULK_PORTS=""
+                    ## For bulk traffic like BitTorrent.
+                    # Set known BitTorrent ports and define them here.
+                    # Use commas or port ranges A-B.
 
 ## Other ports [OPTIONAL]
-DSCP_OTHER_PORTS="CS0"  # Change this DSCP value to whatever you want.
+DSCP_OTHER_PORTS="CS0"  # DSCP value for 'other' ports.
 
 TCP_SRC_OTHER_PORTS=""
 TCP_DST_OTHER_PORTS=""
-
 UDP_SRC_OTHER_PORTS=""
 UDP_DST_OTHER_PORTS=""
-                     ## "SRC" = Source port | "DST" = Destination port
-                     # Define a list of TCP and UDP ports to mark wherever you want.
-                     # Use a comma to separate the values or ranges A-B as shown.
-
+                    ## Custom port-based DSCP marking.
+                    # Define TCP/UDP ports to mark with the DSCP value above.
 
 ############################################################
-
 
 ### IP address settings ###
 
-## To add static IP addresses in OpenWrt go to "Network -> DHCP and DNS -> Static Leases -> Click on 'Add'".
-## You can delete the IP addresses below, because are just examples.
+## Define static IPs via OpenWrt UI: Network → DHCP and DNS → Static Leases
 
+## Game consoles (Static IPs)
+IPV4_GAME_CONSOLES_STATIC_IP="192.168.1.200-192.168.1.201"
+IPV6_GAME_CONSOLES_STATIC_IP="IPv6::200-IPv6::201"
+                    # Mark all traffic from these IPs (except for exempt ports) as gaming.
+                    # Supports single IP or range (A-B), comma-separated.
 
-## Game consoles (Static IP)
-IPV4_GAME_CONSOLES_STATIC_IP="192.168.1.15, 192.168.1.20-192.168.1.25"
-                              # Define a list of IPv4 addresses that will cover all ports (except ports 80, 443, 8080, Live Streaming and BitTorrent).
-                              # Write a single IPv4 address or ranges of IPv4 addresses A-B and use a comma to separate them as shown.
-                              # The IPv4 address ranges "192.168.1.20-192.168.1.25" will cover IPv4 addresses from '192.168.1.20' to '192.168.1.25'
-
-
-IPV6_GAME_CONSOLES_STATIC_IP="IPv6::15, IPv6::20-IPv6::25"
-                              # Write the IPv6 address or simply write "IPv6::" to automatically add the IPv6 address of your router
-                              # and just change the number "15" (or IP address ranges '20' and '25') to the last number of the static IPv4 of your console.
-                              # To add an IPv6 address, simply change the number after the double colon "::" for the last number of your static IPv4 address.
-                              # The last number "::15" is the static IPv4 address of '192.168.x.15'
-                              # The IPv6 address ranges "::20-::25" will cover static IPv4 addresses from '192.168.x.20' to '192.168.x.25'
-
-## TorrentBox (Static IP)
-IPV4_TORRENTBOX_STATIC_IP="192.168.1.10"
-                           # Define a list of IPv4 addresses to mark 'all traffic' as bulk.
-                           # Write a single IPv4 address or ranges of IPv4 addresses A-B and use a comma to separate them as shown.
-
-IPV6_TORRENTBOX_STATIC_IP="IPv6::10"
-                           # Write the IPv6 address or simply write "IPv6::" to automatically add the IPv6 address of your router
-                           # and just change the number "10" to the last number of the static IPv4.
-                           # To add an IPv6 address, simply change the number after the double colon "::" for the last number of your static IPv4 address.
-                           # The last number "::10" is the static IPv4 address of '192.168.x.10'
-
+## TorrentBox (Static IPs)
+IPV4_TORRENTBOX_STATIC_IP=""
+IPV6_TORRENTBOX_STATIC_IP=""
+                    # Mark all traffic from these IPs as bulk.
+                    # Supports IPv4/IPv6 ranges as above.
 
 ## Other static IP addresses [OPTIONAL]
-DSCP_OTHER_STATIC_IP="CS0"  # Change this DSCP value to whatever you want.
-
+DSCP_OTHER_STATIC_IP="CS0"  # DSCP value to use for marking below IPs.
 IPV4_OTHER_STATIC_IP=""
 IPV6_OTHER_STATIC_IP=""
-                      # Define a list of IP addresses to mark 'all traffic' wherever you want.
-                      # Write a single IPv4 and IPv6 address or ranges of IP addresses A-B and use a comma to separate them as shown.
-
+                    # Mark all traffic from these IPs with the defined DSCP value.
+                    # Supports IP ranges, comma-separated.
 
 ######################################################################################################################
-
 
 ### Change default OpenWrt settings ###
 
-DEFAULT_QDISC="fq_codel"  # Write: "fq_codel" | "cake"
-                          # "fq_codel" Great all around qdisc. (Default in OpenWrt)
-                          # "cake"     Great for WAN links, but computationally expensive with little advantages over 'fq_codel' for LAN links.
+DEFAULT_QDISC="fq_codel"  # Options: "fq_codel" | "cake"
+                          # fq_codel = Good general-purpose scheduler (OpenWrt default)
+                          # cake     = Best for WAN shaping, heavier CPU usage
 
+TCP_CONGESTION_CONTROL="cubic"  # Options: "cubic" | "bbr"
+                              # bbr = Google's congestion algorithm (used on YouTube)
+                              # cubic = Default on most Linux systems
 
-TCP_CONGESTION_CONTROL="cubic"  # Write: "cubic" | "bbr"
-                                # "cubic" The default algorithm for most Linux platforms. (Default in OpenWrt)
-                                # "bbr"   The algorithm that was developed by Google and is since used on YouTube, maybe this can improve network response.
-
-
-ECN="2"  # Write values between "0" and "2"
-         # "0" Disable ECN. Neither initiate nor accept ECN.
-         # "1" Enable ECN. When requested by incoming connections and also request ECN on outgoing connection attempts.
-         # "2" Enable ECN. When requested by incoming connections, but do not request ECN on outgoing connections. (Default in OpenWrt)
-         # Read: https://www.bufferbloat.net/projects/cerowrt/wiki/Enable_ECN/
-
-
-############################################################
-
-
-### irqbalance and Packet Steering ###
-
-IRQBALANCE="no"  # Write: "yes" | "no"
-                 ## If you enable or disable it, you need to "reboot" the router for it to take effect.
-                 # Help balance the cpu load generated by interrupts across all of a systems cpus and probably increase performance.
-                 # The purpose of irqbalance is to distribute hardware interrupts across processors/cores on a multiprocessor/multicore system in order to increase performance.
-
-
-PACKET_STEERING="no"  # Write: "yes" | "no"
-                      ## If you enable or disable it, you need to "reboot" the router for it to take effect.
-                      # Enable packet steering across all CPUs. May help or hinder network speed.
-                      # It's another (further) approach of trying to equally distribute the load of (network-) packet processing over all available cores.
-                      # In theory this should also 'always' help, in practice it can be worse on some devices.
-                      # It enables some kind of steering that seems different than what irqbalance does. I'm guessing it sets some of the manual IRQ or TX/RX IRQ assignments.
-
-                      # Enabling packet-steering can go either way, it may improve your throughput or it can worsen your results.
-                      # This is hardware (and to come extent protocol-, as in PPPoE vs DHCP vs whatever) dependent, so you need to
-                      # test both and compare your speedtests (and CPU load, keep "htop" open over SSH) for both configuration settings.
-
+ECN="1"  # Explicit Congestion Notification: 0=disable, 1=initiate/accept, 2=accept only
+         # See: https://www.bufferbloat.net/projects/cerowrt/wiki/Enable_ECN/
 
 ######################################################################################################################
+
 
 #########################      #########################      #########################      #########################
 ### DO NOT EDIT BELOW ###      ### DO NOT EDIT BELOW ###      ### DO NOT EDIT BELOW ###      ### DO NOT EDIT BELOW ###
@@ -299,129 +148,203 @@ PACKET_STEERING="no"  # Write: "yes" | "no"
 
 ######################################################################################################################
 
-### Veth method ###
+# Required packages
+REQUIRED_PACKAGES="tc-full kmod-sched-cake kmod-tcp-bbr kmod-sched-ctinfo kmod-ifb"
 
-## Suppress warnings about missing public prefix
-uci -q get dhcp.odhcpd.loglevel | grep "3" > /dev/null 2>&1 || {
-uci set dhcp.odhcpd.loglevel="3"
-uci commit && reload_config
+# Detect package manager
+detect_package_manager() {
+    if command -v opkg >/dev/null 2>&1; then
+        echo "opkg"
+    elif command -v apk >/dev/null 2>&1; then
+        echo "apk"
+    else
+        echo "none"
+    fi
 }
 
-if [ "$DOWNSHAPING_METHOD" = "veth" ]; then
-    ## Add veth devices
-    ip link show veth0 > /dev/null 2>&1 || {
-    ip link add type veth
-    sleep 10
-    }
-    ip link set veth0 up
-    ip link set veth1 up
-    ip link set veth1 promisc on
-    ip link set veth1 master br-lan
-    ip rule del priority 100 > /dev/null 2>&1
-    ip route del table 100 > /dev/null 2>&1
-    ip route add default dev veth0 table 100
-    ip rule add iif $WAN priority 100 table 100
-    ip -6 rule del priority 100 > /dev/null 2>&1
-    ip -6 route del table 100 > /dev/null 2>&1
-    ip -6 route add default dev veth0 table 100
-    ip -6 rule add iif $WAN priority 100 table 100
+# Check if package is installed
+is_package_installed() {
+    case "$1" in
+        opkg) opkg list-installed 2>/dev/null | grep -qw "$2" ;;
+        apk)  apk info 2>/dev/null | grep -qw "$2" ;;
+    esac
+}
 
-elif [ "$DOWNSHAPING_METHOD" = "ctinfo" ]; then
-    # Set up ingress handle for WAN interface
-    tc qdisc add dev $WAN handle ffff: ingress
-    # Create IFB interface
-    ip link add name ifb-$WAN type ifb
-    ip link set ifb-$WAN up
-    # Redirect ingress traffic from WAN to IFB and restore DSCP from conntrack
-    tc filter add dev $WAN parent ffff: protocol all matchall action ctinfo dscp 63 128 mirred egress redirect dev ifb-$WAN
-else
-    echo "Invalid downstream shaping method: $DOWNSHAPING_METHOD"
-    exit 1
+# Get package manager
+PACKAGE_MANAGER=$(detect_package_manager)
+
+if [ "$PACKAGE_MANAGER" = "none" ]; then
+    echo "Error: No supported package manager (opkg or apk) found."
+    return 1 2>/dev/null || exit 1
 fi
+
+# Track if any packages are missing
+MISSING=0
+
+for pkg in $REQUIRED_PACKAGES; do
+    if ! is_package_installed "$PACKAGE_MANAGER" "$pkg"; then
+        MISSING=1
+        break
+    fi
+done
+
+# If missing, update and install
+if [ "$MISSING" -eq 1 ]; then
+    echo "Missing packages detected. Updating package list..."
+    [ "$PACKAGE_MANAGER" = "opkg" ] && opkg update >/dev/null 2>&1
+    [ "$PACKAGE_MANAGER" = "apk" ]  && apk update  >/dev/null 2>&1
+
+    for pkg in $REQUIRED_PACKAGES; do
+        if ! is_package_installed "$PACKAGE_MANAGER" "$pkg"; then
+            echo "Installing $pkg..."
+            case "$PACKAGE_MANAGER" in
+                opkg) opkg install "$pkg" >/dev/null 2>&1 || echo "Warning: Failed to install $pkg" ;;
+                apk)  apk add "$pkg"    >/dev/null 2>&1 || echo "Warning: Failed to install $pkg" ;;
+            esac
+        else
+            echo "$pkg already installed. Skipping."
+        fi
+    done
+else
+    echo "All required packages are already installed. Skipping installation."
+fi
+
+# Continue with the rest of your setup below here
+echo "Continuing with the rest of setup..."
+
+
+clean_ifb_and_ingress() {
+    IFB="ifb-$WAN"
+
+    # Delete root qdisc on IFB device (this removes cake on ifb)
+    tc qdisc del dev "$IFB" root >/dev/null 2>&1
+
+    # Delete ingress qdisc on WAN device
+    tc qdisc del dev "$WAN" ingress >/dev/null 2>&1
+
+    # Delete the IFB interface if it exists
+    ip link show "$IFB" >/dev/null 2>&1 && ip link del "$IFB"
+	
+	# Final forced removal of stubborn IFB qdisc
+    ip link set ifb-pppoe-wan down 2>/dev/null
+    tc qdisc del dev ifb-pppoe-wan root 2>/dev/null
+}
+
+clean_wan() {
+    tc qdisc del dev "$WAN" root >/dev/null 2>&1
+    tc qdisc del dev "$WAN" ingress >/dev/null 2>&1
+}
+
+clean_lan() {
+    tc qdisc del dev "$LAN" root >/dev/null 2>&1
+    tc qdisc del dev "$LAN" ingress >/dev/null 2>&1
+    tc qdisc del dev br-lan root >/dev/null 2>&1
+    tc qdisc del dev br-lan ingress >/dev/null 2>&1
+}
+
+############################################################
+
+echo "Selected downshaping method: $DOWNSHAPING_METHOD"
+
+case "$DOWNSHAPING_METHOD" in
+    ctinfo)
+        echo "Using ctinfo method..."
+        sleep 1
+
+        # Clean WAN and IFB related qdiscs/interfaces before setup
+        clean_ifb_and_ingress
+        clean_wan
+
+        # Add ingress qdisc on WAN
+        tc qdisc add dev "$WAN" handle ffff: ingress
+
+        # Create and bring up IFB interface
+        ip link add name "ifb-$WAN" type ifb
+        ip link set "ifb-$WAN" up
+
+        # Redirect DSCP 63 traffic from WAN ingress to IFB
+        tc filter add dev "$WAN" parent ffff: protocol all matchall \
+            action ctinfo dscp 63 128 \
+            mirred egress redirect dev "ifb-$WAN"
+        ;;
+
+    lan|"")
+        echo "Using LAN method..."
+        sleep 1
+
+        # Clean LAN and WAN qdiscs
+        clean_ifb_and_ingress
+        clean_wan
+        clean_lan
+
+        echo "LAN method selected, $LAN configuration applied."
+        ;;
+
+    *)
+        echo "Invalid downshaping method: $DOWNSHAPING_METHOD. Falling back to LAN."
+        DOWNSHAPING_METHOD="lan"
+        sleep 1
+
+        clean_ifb_and_ingress
+        clean_wan
+        clean_lan
+
+        echo "LAN method selected, $LAN configuration applied."
+        ;;
+esac
+
 
 ############################################################
 
 ### Change default OpenWrt settings ###
 
-## Default qdisc
-case $DEFAULT_QDISC in
-    fq) DEFAULT_QDISC="fq" ;;
-    fq_codel) DEFAULT_QDISC="fq_codel" ;;
-    cake) DEFAULT_QDISC="cake" ;;
+## Validate and set defaults
+case "$DEFAULT_QDISC" in
+    fq|fq_codel|cake) ;;  # valid values, no change
     *) DEFAULT_QDISC="fq_codel" ;;
 esac
 
-## TCP congestion control
-case $TCP_CONGESTION_CONTROL in
-    reno) TCP_CONGESTION_CONTROL="reno" ;;
-    cubic) TCP_CONGESTION_CONTROL="cubic" ;;
-    bbr) TCP_CONGESTION_CONTROL="bbr" ;;
-    hybla) TCP_CONGESTION_CONTROL="hybla" ;;
-    scalable) TCP_CONGESTION_CONTROL="scalable" ;;
+case "$TCP_CONGESTION_CONTROL" in
+    reno|cubic|bbr|hybla|scalable) ;;  # valid values
     *) TCP_CONGESTION_CONTROL="cubic" ;;
 esac
 
-## ECN
-case $ECN in
-    0) ECN="0" ;;
-    1) ECN="1" ;;
-    2) ECN="2" ;;
+case "$ECN" in
+    0|1|2) ;;  # valid values
     *) ECN="2" ;;
 esac
 
-## Add the settings in "sysctl.conf"
-grep "tcp_ecn" /etc/sysctl.conf > /dev/null 2>&1 || sed -i "/#/a net.ipv4.tcp_ecn=$ECN" /etc/sysctl.conf > /dev/null 2>&1
-grep "tcp_congestion_control" /etc/sysctl.conf > /dev/null 2>&1 || sed -i "/#/a net.ipv4.tcp_congestion_control=$TCP_CONGESTION_CONTROL" /etc/sysctl.conf > /dev/null 2>&1
-grep "default_qdisc" /etc/sysctl.conf > /dev/null 2>&1 || sed -i "/#/a net.core.default_qdisc=$DEFAULT_QDISC" /etc/sysctl.conf > /dev/null 2>&1
+## Add or update sysctl.conf entries with idempotency
+set_sysctl_conf() {
+    local key="$1"
+    local val="$2"
+    if grep -q "^$key=" /etc/sysctl.conf; then
+        sed -i "s|^$key=.*|$key=$val|" /etc/sysctl.conf
+    else
+        # Add after first comment line or at end if none
+        sed -i "/^#/a $key=$val" /etc/sysctl.conf || echo "$key=$val" >> /etc/sysctl.conf
+    fi
+}
 
-## Change the values
-grep "default_qdisc" /etc/sysctl.conf | grep "$DEFAULT_QDISC" > /dev/null 2>&1 || sed -i "/default_qdisc/s/=.*/=$DEFAULT_QDISC/" /etc/sysctl.conf > /dev/null 2>&1
-grep "tcp_congestion_control" /etc/sysctl.conf | grep "$TCP_CONGESTION_CONTROL" > /dev/null 2>&1 || sed -i "/tcp_congestion_control/s/=.*/=$TCP_CONGESTION_CONTROL/" /etc/sysctl.conf > /dev/null 2>&1
-grep "tcp_ecn" /etc/sysctl.conf | grep "$ECN" > /dev/null 2>&1 || sed -i "/tcp_ecn/s/=.*/=$ECN/" /etc/sysctl.conf > /dev/null 2>&1
+set_sysctl_conf net.core.default_qdisc "$DEFAULT_QDISC"
+set_sysctl_conf net.ipv4.tcp_congestion_control "$TCP_CONGESTION_CONTROL"
+set_sysctl_conf net.ipv4.tcp_ecn "$ECN"
 
-## Set the values
-sysctl -n net.core.default_qdisc | grep "$DEFAULT_QDISC" > /dev/null 2>&1 || sysctl -p > /dev/null 2>&1
-sysctl -n net.ipv4.tcp_congestion_control | grep "$TCP_CONGESTION_CONTROL" > /dev/null 2>&1 || sysctl -p > /dev/null 2>&1
-sysctl -n net.ipv4.tcp_ecn | grep "$ECN" > /dev/null 2>&1 || sysctl -p > /dev/null 2>&1
+## Reload sysctl settings if not already applied
+reload_sysctl_if_needed() {
+    local key="$1"
+    local expected="$2"
+    local current
+    current=$(sysctl -n "$key")
+    [ "$current" != "$expected" ] && sysctl -w "$key=$expected" >/dev/null
+}
 
-############################################################
-
-### irqbalance and Packet Steering ###
-
-## To check if "irqbalance" is installed
-CHECK_IRQBALANCE="$(opkg list-installed | grep "irqbalance" | sed 's/ .*//')" > /dev/null 2>&1
-
-## irqbalance
-if [ "irqbalance" = "$CHECK_IRQBALANCE" ] && [ "$IRQBALANCE" = "yes" ]; then
-    # Enable
-    uci -q get irqbalance.irqbalance.enabled | grep "1" > /dev/null 2>&1 || {
-    uci -q set irqbalance.irqbalance.enabled="1"
-    uci commit && reload_config
-    }
-elif [ "irqbalance" = "$CHECK_IRQBALANCE" ] && [ "$IRQBALANCE" != "yes" ]; then
-    # Disable
-    uci -q get irqbalance.irqbalance.enabled | grep "0" > /dev/null 2>&1 || {
-    uci -q set irqbalance.irqbalance.enabled="0"
-    uci commit && reload_config
-    }
-fi
-
-## Packet Steering
-if [ "$PACKET_STEERING" = "yes" ]; then
-    # Enable
-    uci -q get network.globals.packet_steering | grep "1" > /dev/null 2>&1 || {
-    uci set network.globals.packet_steering="1"
-    uci commit && reload_config
-    }
-elif [ "$PACKET_STEERING" != "yes" ]; then
-    # Disable
-    uci -q get network.globals.packet_steering > /dev/null 2>&1 && {
-    uci del network.globals.packet_steering
-    uci commit && reload_config
-    }
-fi
+reload_sysctl_if_needed net.core.default_qdisc "$DEFAULT_QDISC"
+reload_sysctl_if_needed net.ipv4.tcp_congestion_control "$TCP_CONGESTION_CONTROL"
+reload_sysctl_if_needed net.ipv4.tcp_ecn "$ECN"
 
 ############################################################
+
 
 ### CAKE settings ###
 
@@ -560,33 +483,46 @@ esac
 
 ############################################################
 
-############################################################
-
 ### CAKE qdiscs ###
 
-## Inbound / Ingress
-if [ "$BANDWIDTH_DOWN" != "" ]; then
-    # Determine the device based on the downshaping method
-    if [ "$DOWNSHAPING_METHOD" = "ctinfo" ]; then
-        INGRESS_DEVICE="ifb-$WAN"  # Use ifb-$WAN if ctinfo is active
-    else
-        INGRESS_DEVICE="veth0"     # Default to veth0 if ctinfo is not active
-    fi
+## Determine the ingress device based on method
+if [ -n "$BANDWIDTH_DOWN" ]; then
+    case "$DOWNSHAPING_METHOD" in
+        "ctinfo")
+            INGRESS_DEVICE="ifb-$WAN"
+            ;;
+        *)
+            INGRESS_DEVICE="$LAN"
+            ;;
+    esac
 
-    tc qdisc add dev $INGRESS_DEVICE root cake $BANDWIDTH_DOWN_CAKE $AUTORATE_INGRESS_CAKE $PRIORITY_QUEUE_INGRESS $HOST_ISOLATION_INGRESS $NAT_INGRESS $WASH_INGRESS $INGRESS_MODE $RTT $COMMON_LINK_PRESETS $ETHER_VLAN_KEYWORD $LINK_COMPENSATION $OVERHEAD $MPU $EXTRA_PARAMETERS_INGRESS
+    echo "Ingress device set to: $INGRESS_DEVICE"
+
+    # Delete existing qdisc on the ingress device
+    tc qdisc del dev "$INGRESS_DEVICE" root > /dev/null 2>&1
+
+    # Apply CAKE for ingress shaping
+    tc qdisc add dev "$INGRESS_DEVICE" root cake \
+        $BANDWIDTH_DOWN_CAKE $AUTORATE_INGRESS_CAKE $PRIORITY_QUEUE_INGRESS \
+        $HOST_ISOLATION_INGRESS $NAT_INGRESS $WASH_INGRESS $INGRESS_MODE \
+        $RTT $COMMON_LINK_PRESETS $ETHER_VLAN_KEYWORD $LINK_COMPENSATION \
+        $OVERHEAD $MPU $EXTRA_PARAMETERS_INGRESS
 fi
 
-## Outbound / Egress
-if [ "$BANDWIDTH_UP" != "" ]; then
-    tc qdisc add dev $WAN root cake $BANDWIDTH_UP_CAKE $PRIORITY_QUEUE_EGRESS $HOST_ISOLATION_EGRESS $NAT_EGRESS $WASH_EGRESS $ACK_FILTER_EGRESS $RTT $COMMON_LINK_PRESETS $ETHER_VLAN_KEYWORD $LINK_COMPENSATION $OVERHEAD $MPU $EXTRA_PARAMETERS_EGRESS
-fi
+## Outbound / Egress shaping on WAN
+if [ -n "$BANDWIDTH_UP" ]; then
+    tc qdisc del dev "$WAN" root > /dev/null 2>&1
 
-######################################################################################################################
+    tc qdisc add dev "$WAN" root cake \
+        $BANDWIDTH_UP_CAKE $PRIORITY_QUEUE_EGRESS $HOST_ISOLATION_EGRESS \
+        $NAT_EGRESS $WASH_EGRESS $ACK_FILTER_EGRESS $RTT $COMMON_LINK_PRESETS \
+        $ETHER_VLAN_KEYWORD $LINK_COMPENSATION $OVERHEAD $MPU $EXTRA_PARAMETERS_EGRESS
+fi
 
 ### Init Script ###
 
-## Check if the file does not exist
-if [ ! -f "/etc/init.d/cake" ]; then
+## remove old file
+rm -f /etc/init.d/cake
 cat << "INITSCRIPT" > /etc/init.d/cake
 #!/bin/sh /etc/rc.common
 
@@ -610,31 +546,20 @@ stop_service() {
     ############################################################
 
     ### Interface ###
-    WAN="$(sed '/WAN=/!d; /sed/d; s/WAN="//; s/".*//' /root/cake.sh)"
+    WAN="$(sed -n '/^WAN=/ { s/WAN="//; s/".*//; p }' /root/cake.sh)"
+	LAN="$(sed -n '/^LAN=/ { s/LAN="//; s/".*//; p }' /root/cake.sh)"
+	IFB="ifb-$WAN"
 
     ############################################################
 
     ## Delete the old qdiscs created by the script
-    tc qdisc del dev veth0 root > /dev/null 2>&1
     tc qdisc del dev $WAN root > /dev/null 2>&1
-    tc qdisc del dev ifb-$WAN root > /dev/null 2>&1
     tc qdisc del dev $WAN ingress > /dev/null 2>&1
+	tc qdisc del dev $LAN root > /dev/null 2>&1
+	tc qdisc del dev ifb-$WAN root > /dev/null 2>&1
 
     ## Delete IFB
     ip link del ifb-$WAN 2>/dev/null
-
-    ############################################################
-
-    ## Delete veth devices
-    ip link show veth0 > /dev/null 2>&1 && {
-    ip link set veth1 nomaster
-    ip link set veth1 promisc off
-    ip link set veth1 down
-    ip link set veth0 down
-    ip link del veth0
-    ip rule del priority 100 > /dev/null 2>&1
-    ip -6 rule del priority 100 > /dev/null 2>&1
-    }
 
     ############################################################
 
@@ -684,7 +609,7 @@ stop_service() {
     if [ -f /etc/nftables.d/00-rules.nft ]; then
         rm /etc/nftables.d/00-rules.nft
     fi
-    
+	    
     exit 0
 }
 
@@ -701,14 +626,14 @@ reload_service() {
 INITSCRIPT
 chmod 755 /etc/init.d/cake > /dev/null 2>&1
 /etc/init.d/cake enable > /dev/null 2>&1
-fi
+
 
 ############################################################
 
 ### Hotplug ###
 
-## Check if the file does not exist
-if [ ! -f "/etc/hotplug.d/iface/99-cake" ]; then
+## remove old file
+rm -f /etc/hotplug.d/iface/99-cake
 cat << "HOTPLUG" > /etc/hotplug.d/iface/99-cake
 #!/bin/sh
 
@@ -728,39 +653,8 @@ fi
 logger -t cake "Reloading cake.sh due to $ACTION of $INTERFACE ($DEVICE)"
 sleep 10 && /etc/init.d/cake restart
 HOTPLUG
-fi
 
-######################################################################################################################
-echo "############################################################"
-echo "                  NOBODY ELSE CAN SAVE YOU"
-echo "                     TRUST JESUS TODAY!"
-echo "############################################################"
-echo ""
-echo "As it is written: 'There is none righteous, no, not one'. Romans 3:10"
-echo "For all have sinned and come short of the glory of God. Romans 3:23"
-echo ""
-echo "Therefore, as by one man sin entered into the world, and death by sin, so death passed onto all men, for all have sinned. Romans 5:12"
-echo "For the wages of sin is death, but the gift of God is eternal life through Jesus Christ our Lord. Romans 6:23"
-echo ""
-echo "But God commendeth His love toward us in that, while we were yet sinners, Christ died for us. Romans 5:8"
-echo "For 'whosoever shall call upon the name of the Lord shall be saved'. Romans 10:13"
-echo ""
-echo "Jesus said, 'I am the Way, the Truth, and the Life; no man cometh unto the Father, but by Me.' John 14:6"
-echo ""
-echo "Behold, I stand at the door and knock. If any man hear My voice and open the door, I will come in to him, and will sup with him, and he with Me. Revelation 3:20"
-echo "That if thou shalt confess with thy mouth the Lord Jesus, and shalt believe in thine heart that God hath raised Him from the dead, thou shalt be saved. Romans 10:9"
-echo ""
-echo "WHAT TO PRAY"
-echo "============"
-echo "Dear God, I am a sinner and need forgiveness."
-echo "I believe that Jesus Christ shed His 'precious blood' and died for my sin."
-echo "I am  willing to turn from sin."
-echo "I now invite Jesus Christ to come into my heart as my personal Savior. AMEN!"
-echo ""
-echo "The Lord Jesus is coming for His Church!"
-echo "****************************************"
-echo "Do not waste your time, repent of your sins and accept Jesus Christ as your Lord and Savior and you and your family will be saved."
-echo ""
+
 ######################################################################################################################
 
 ### Rules settings ###
@@ -957,28 +851,27 @@ chain pre_mangle_postrouting {
 chain dscp_marking_ports_ipv4 {
     ## Port rules (IPv4) ##
 
-    # ICMP (aka ping)
-    meta l4proto icmp counter ip dscp set $DSCP_ICMP comment "ICMP (aka ping) to $DSCP_ICMP_COMMENT"
-    # SSH, NTP and DNS
-    meta nfproto ipv4 tcp sport { 22, 53, 5353 } counter ip dscp set cs2 comment "SSH and DNS to CS2 (TCP)"
-    meta nfproto ipv4 tcp dport { 22, 53, 5353 } counter ip dscp set cs2 comment "SSH and DNS to CS2 (TCP)"
-    meta nfproto ipv4 udp sport { 123, 53, 5353 } counter ip dscp set cs2 comment "NTP and DNS to CS2 (UDP)"
+	# ICMP (aka ping)
+	meta l4proto icmp counter ip dscp set $DSCP_ICMP comment "ICMP (aka ping) to $DSCP_ICMP_COMMENT"
 
-    # DNS over TLS (DoT)
-    meta nfproto ipv4 tcp sport 853 counter ip dscp set af41 comment "DNS over TLS to AF41 (TCP)"
-    meta nfproto ipv4 tcp dport 853 counter ip dscp set af41 comment "DNS over TLS to AF41 (TCP)"
-    meta nfproto ipv4 udp sport 853 counter ip dscp set af41 comment "DNS over TLS to AF41 (UDP)"
-    meta nfproto ipv4 udp dport 853 counter ip dscp set af41 comment "DNS over TLS to AF41 (UDP)"
+	# IPv4 - SSH, NTP, and DNS (TCP/UDP)
+	meta nfproto ipv4 meta l4proto {tcp, udp} th sport {22, 53, 123, 5353} ip dscp set cs2 counter comment "SSH, NTP, and DNS (src) to CS2"
+	meta nfproto ipv4 meta l4proto {tcp, udp} th dport {22, 53, 123, 5353} ip dscp set cs2 counter comment "SSH, NTP, and DNS (dst) to CS2"
+
+	# DNS over TLS (DoT) - TCP only
+	meta nfproto ipv4 tcp sport 853 ip dscp set af41 counter comment "DNS over TLS (src) to AF41 (TCP)"
+	meta nfproto ipv4 tcp dport 853 ip dscp set af41 counter comment "DNS over TLS (dst) to AF41 (TCP)"
 
     # HTTP/HTTPS and QUIC
-    meta nfproto ipv4 meta l4proto { tcp, udp } th sport { 80, 443 } counter ip dscp set cs0 comment "Ingress traffic to CS0 (TCP and UDP)"
-    meta nfproto ipv4 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 0-77 counter ip dscp set cs0 comment "Egress smaller packets (like ACKs, SYN) to CS0 (TCP and UDP) - Downloads in general agressively max out this class"
-    meta nfproto ipv4 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 77-1256 limit rate 200/second counter ip dscp set af41 comment "Prioritize egress light browsing (text/live chat/code?) and VoIP (these are the fallback ports) to AF41 (TCP and UDP)"
-    meta nfproto ipv4 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 77-1256 limit rate over 200/second counter ip dscp set cs0 comment "Deprioritize egress traffic of packet lengths between 77 and 1256 bytes that have more than 200 pps to CS0 (TCP and UDP)"
+    meta nfproto ipv4 meta l4proto { tcp, udp } th sport { 80, 443 } ip dscp set cs0 counter comment "Ingress traffic to CS0 (TCP and UDP)"
+    meta nfproto ipv4 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 0-84 counter ip dscp set cs0 comment "Egress smaller packets (like ACKs, SYN) to CS0 (TCP and UDP) - Downloads in general agressively max out this class"
+    meta nfproto ipv4 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 84-1256 limit rate 200/second counter ip dscp set af41 comment "Prioritize egress light browsing (text/live chat/code?) and VoIP (these are the fallback ports) to AF41 (TCP and UDP)"
+    meta nfproto ipv4 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 84-1256 limit rate over 200/second counter ip dscp set cs0 comment "Deprioritize egress traffic of packet lengths between 84 and 1256 bytes that have more than 200 pps to CS0 (TCP and UDP)"
+	meta nfproto ipv4 meta l4proto tcp th sport { 80, 443 } ct bytes > 1073741824 meta mark set 100 ip dscp set cs1 counter comment "Download >1GB: downgrade to CS1"
 
     # Live Streaming ports for YouTube Live, Twitch, Vimeo and LinkedIn Live
-    meta nfproto ipv4 tcp sport { 1935-1936, 2396, 2935 } counter ip dscp set cs3 comment "Live Streaming ports to CS3 (TCP)"
-    meta nfproto ipv4 tcp dport { 1935-1936, 2396, 2935 } counter ip dscp set cs3 comment "Live Streaming ports to CS3 (TCP)"
+    meta nfproto ipv4 tcp sport { 1935-1936, 2396, 2935 } ip dscp set cs3 counter comment "Live Streaming ports to CS3 (TCP)"
+    meta nfproto ipv4 tcp dport { 1935-1936, 2396, 2935 } ip dscp set cs3 counter comment "Live Streaming ports to CS3 (TCP)"
 
     # Xbox, PlayStation, Call of Duty, FIFA, Minecraft and Supercell Games
     meta nfproto ipv4 tcp sport { 3074, 3478-3480, 3075-3076, 3659, 25565, 9339 } counter ip dscp set $DSCP_GAMING comment "Known game ports and game consoles ports to $DSCP_GAMING_COMMENT (TCP)"
@@ -1011,20 +904,22 @@ chain dscp_marking_ports_ipv4 {
     meta nfproto ipv4 udp dport { 6771, 6881-7000, 28221, 30301, 41952, 49160, 51413, $UDP_DST_BULK_PORTS } ip dscp cs1 counter meta mark set 43 comment "Packet mark for Usenet, BitTorrent and custom bulk ports to be excluded (UDP)"
 
     # Unmarked TCP traffic
-    meta nfproto ipv4 tcp sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } tcp dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 40, 41 } meta length 0-1256 limit rate over 200/second burst 100 packets ip dscp cs1 counter meta mark set 45 comment "Packet mark for unmarked TCP traffic of packet lengths between 0 and 1256 bytes that have more than 200 pps"
+    meta nfproto ipv4 tcp sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } tcp dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 40, 41, 100 } meta length 0-1256 limit rate over 200/second burst 100 packets ip dscp cs1 counter meta mark set 45 comment "Packet mark for unmarked TCP traffic of packet lengths between 0 and 1256 bytes that have more than 200 pps"
     meta nfproto ipv4 meta l4proto tcp numgen random mod 1000 < 5 meta mark 45 counter meta mark set 0 comment "0.5% probability of unmark a packet that go over 200 pps to be prioritized to $DSCP_GAMING_COMMENT (TCP)"
-    meta nfproto ipv4 meta l4proto tcp meta length 0-77 ct direction reply meta mark 45 counter ip dscp set af41 comment "Prioritize ingress unmarked traffic of packet lengths between 0 and 77 bytes that have more than 200 pps to AF41 (TCP)"
-    meta nfproto ipv4 meta l4proto tcp meta length 0-77 ct direction original meta mark 45 counter ip dscp set cs0 comment "Prioritize egress unmarked traffic of packet lengths between 0 and 77 bytes that have more than 200 pps to CS0 (TCP)"
-    meta nfproto ipv4 meta l4proto tcp meta length > 77 meta mark 45 counter ip dscp set af41 comment "Prioritize unmarked traffic of packet lengths between 77 and 1256 bytes that have more than 200 pps to AF41 (TCP)"
-    meta nfproto ipv4 tcp sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } tcp dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 40, 41, 45 } meta length 0-1256 ip dscp cs1 counter ip dscp set $DSCP_GAMING comment "Prioritize unmarked traffic of packet lengths between 0 and 1256 bytes that have less than 200 pps to $DSCP_GAMING_COMMENT (TCP)"
+    meta nfproto ipv4 meta l4proto tcp meta length 0-84 ct direction reply meta mark 45 counter ip dscp set af41 comment "Prioritize ingress unmarked traffic of packet lengths between 0 and 84 bytes that have more than 200 pps to AF41 (TCP)"
+    meta nfproto ipv4 meta l4proto tcp meta length 0-84 ct direction original meta mark 45 counter ip dscp set cs0 comment "Prioritize egress unmarked traffic of packet lengths between 0 and 84 bytes that have more than 200 pps to CS0 (TCP)"
+    meta nfproto ipv4 meta l4proto tcp meta length > 84 meta mark 45 counter ip dscp set af41 comment "Prioritize unmarked traffic of packet lengths between 84 and 1256 bytes that have more than 200 pps to AF41 (TCP)"
+    meta nfproto ipv4 tcp sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } tcp dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 40, 41, 45, 100 } meta length 0-1256 ip dscp cs1 counter ip dscp set $DSCP_GAMING comment "Prioritize unmarked traffic of packet lengths between 0 and 1256 bytes that have less than 200 pps to $DSCP_GAMING_COMMENT (TCP)"
 
     # Unmarked UDP traffic (Some games also tend to use really tiny packets on upload side (same range as ACKs))
     meta nfproto ipv4 udp sport != { 80, 443 } udp dport != { 80, 443 } meta mark != { 42, 43 } meta length 0-1256 limit rate over 250/second burst 100 packets ip dscp cs1 counter meta mark set 50 comment "Packet mark for unmarked UDP traffic of packet lengths between 0 and 1256 bytes that have more than 250 pps"
     meta nfproto ipv4 meta l4proto udp numgen random mod 1000 < 5 meta mark 50 counter meta mark set 0 comment "0.5% probability of unmark a packet that go over 250 pps to be prioritized to $DSCP_GAMING_COMMENT (UDP)"
-    meta nfproto ipv4 meta l4proto udp meta length 0-77 ct direction reply meta mark 50 counter ip dscp set af41 comment "Prioritize ingress unmarked traffic of packet lengths between 0 and 77 bytes that have more than 250 pps to AF41 (UDP)"
-    meta nfproto ipv4 meta l4proto udp meta length 0-77 ct direction original meta mark 50 counter ip dscp set cs0 comment "Prioritize egress unmarked traffic of packet lengths between 0 and 77 bytes that have more than 250 pps to CS0 (UDP)"
-    meta nfproto ipv4 meta l4proto udp meta length > 77 meta mark 50 counter ip dscp set af41 comment "Prioritize unmarked traffic of packet lengths between 77 and 1256 bytes that have more than 250 pps to AF41 (UDP)"
+    meta nfproto ipv4 meta l4proto udp meta length 0-84 ct direction reply meta mark 50 counter ip dscp set af41 comment "Prioritize ingress unmarked traffic of packet lengths between 0 and 84 bytes that have more than 250 pps to AF41 (UDP)"
+    meta nfproto ipv4 meta l4proto udp meta length 0-84 ct direction original meta mark 50 counter ip dscp set cs0 comment "Prioritize egress unmarked traffic of packet lengths between 0 and 84 bytes that have more than 250 pps to CS0 (UDP)"
+    meta nfproto ipv4 meta l4proto udp meta length > 84 meta mark 50 counter ip dscp set af41 comment "Prioritize unmarked traffic of packet lengths between 77 and 1256 bytes that have more than 250 pps to AF41 (UDP)"
     meta nfproto ipv4 udp sport != { 80, 443 } udp dport != { 80, 443 } meta mark != { 42, 43, 50 } meta length 0-1256 ip dscp cs1 counter ip dscp set $DSCP_GAMING comment "Prioritize unmarked traffic of packet lengths between 0 and 1256 bytes that have less than 250 pps to $DSCP_GAMING_COMMENT (UDP) - Gaming & VoIP"
+	
+	
 
     ## Custom port rules (IPv4) ##
 
@@ -1053,26 +948,23 @@ chain dscp_marking_ports_ipv6 {
 
     ## Port rules (IPv6) ##
 
-    # ICMPv6 (aka ping)
-    meta l4proto ipv6-icmp counter ip6 dscp set $DSCP_ICMP comment "ICMPv6 (aka ping) to $DSCP_ICMP_COMMENT"
+	# ICMPv6 (aka ping)
+	meta l4proto ipv6-icmp counter ip6 dscp set $DSCP_ICMP comment "ICMPv6 (aka ping) to $DSCP_ICMP_COMMENT"
 
-    # SSH, NTP and DNS
-    meta nfproto ipv6 tcp sport { 22, 53, 5353 } counter ip6 dscp set cs2 comment "SSH and DNS to CS2 (TCP)"
-    meta nfproto ipv6 tcp dport { 22, 53, 5353 } counter ip6 dscp set cs2 comment "SSH and DNS to CS2 (TCP)"
-    meta nfproto ipv6 udp sport { 123, 53, 5353 } counter ip6 dscp set cs2 comment "NTP and DNS to CS2 (UDP)"
-    meta nfproto ipv6 udp dport { 123, 53, 5353 } counter ip6 dscp set cs2 comment "NTP and DNS to CS2 (UDP)"
+	# IPv6 - SSH, NTP, and DNS (TCP/UDP)
+	meta nfproto ipv6 meta l4proto {tcp, udp} th sport {22, 53, 123, 5353} ip6 dscp set cs2 counter comment "SSH, NTP, and DNS (src) to CS2"
+	meta nfproto ipv6 meta l4proto {tcp, udp} th dport {22, 53, 123, 5353} ip6 dscp set cs2 counter comment "SSH, NTP, and DNS (dst) to CS2"
 
-    # DNS over TLS (DoT)
-    meta nfproto ipv6 tcp sport 853 counter ip6 dscp set af41 comment "DNS over TLS to AF41 (TCP)"
-    meta nfproto ipv6 tcp dport 853 counter ip6 dscp set af41 comment "DNS over TLS to AF41 (TCP)"
-    meta nfproto ipv6 udp sport 853 counter ip6 dscp set af41 comment "DNS over TLS to AF41 (UDP)"
-    meta nfproto ipv6 udp dport 853 counter ip6 dscp set af41 comment "DNS over TLS to AF41 (UDP)"
+	# DNS over TLS (DoT) - TCP only
+	meta nfproto ipv6 tcp sport 853 ip6 dscp set af41 counter comment "DNS over TLS (src) to AF41 (TCP)"
+	meta nfproto ipv6 tcp dport 853 ip6 dscp set af41 counter comment "DNS over TLS (dst) to AF41 (TCP)"
 
     # HTTP/HTTPS and QUIC
     meta nfproto ipv6 meta l4proto { tcp, udp } th sport { 80, 443 } counter ip6 dscp set cs0 comment "Ingress traffic to CS0 (TCP and UDP)"
-    meta nfproto ipv6 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 0-77 counter ip6 dscp set cs0 comment "Egress smaller packets (like ACKs, SYN) to CS0 (TCP and UDP) - Downloads in general agressively max out this class"
-    meta nfproto ipv6 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 77-1256 limit rate 200/second counter ip6 dscp set af41 comment "Prioritize egress light browsing (text/live chat/code?) and VoIP (these are the fallback ports) to AF41 (TCP and UDP)"
-    meta nfproto ipv6 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 77-1256 limit rate over 200/second counter ip6 dscp set cs0 comment "Deprioritize egress traffic of packet lengths between 77 and 1256 bytes that have more than 200 pps to CS0 (TCP and UDP)"
+    meta nfproto ipv6 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 0-84 counter ip6 dscp set cs0 comment "Egress smaller packets (like ACKs, SYN) to CS0 (TCP and UDP) - Downloads in general agressively max out this class"
+    meta nfproto ipv6 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 84-1256 limit rate 200/second counter ip6 dscp set af41 comment "Prioritize egress light browsing (text/live chat/code?) and VoIP (these are the fallback ports) to AF41 (TCP and UDP)"
+    meta nfproto ipv6 meta l4proto { tcp, udp } th dport { 80, 443 } meta length 84-1256 limit rate over 200/second counter ip6 dscp set cs0 comment "Deprioritize egress traffic of packet lengths between 84 and 1256 bytes that have more than 200 pps to CS0 (TCP and UDP)"
+	meta nfproto ipv6 meta l4proto tcp th sport { 80, 443 } ct bytes > 1073741824 meta mark set 110 ip6 dscp set cs1 counter comment "Download >1GB: downgrade to CS1"
 
     # Live Streaming ports for YouTube Live, Twitch, Vimeo and LinkedIn Live
     meta nfproto ipv6 tcp sport { 1935-1936, 2396, 2935 } counter ip6 dscp set cs3 comment "Live Streaming ports to CS3 (TCP)"
@@ -1109,20 +1001,21 @@ chain dscp_marking_ports_ipv6 {
     meta nfproto ipv6 udp dport { 6771, 6881-7000, 28221, 30301, 41952, 49160, 51413, $UDP_DST_BULK_PORTS } ip6 dscp cs1 counter meta mark set 73 comment "Packet mark for Usenet, BitTorrent and custom bulk ports to be excluded (UDP)"
 
     # Unmarked TCP traffic
-    meta nfproto ipv6 tcp sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } tcp dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 70, 71 } meta length 0-1256 limit rate over 200/second burst 100 packets ip6 dscp cs1 counter meta mark set 75 comment "Packet mark for unmarked TCP traffic of packet lengths between 0 and 1256 bytes that have more than 200 pps"
+    meta nfproto ipv6 tcp sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } tcp dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 70, 71, 110 } meta length 0-1256 limit rate over 200/second burst 100 packets ip6 dscp cs1 counter meta mark set 75 comment "Packet mark for unmarked TCP traffic of packet lengths between 0 and 1256 bytes that have more than 200 pps"
     meta nfproto ipv6 meta l4proto tcp numgen random mod 1000 < 5 meta mark 75 counter meta mark set 0 comment "0.5% probability of unmark a packet that go over 200 pps to be prioritized to $DSCP_GAMING_COMMENT (TCP)"
-    meta nfproto ipv6 meta l4proto tcp meta length 0-77 ct direction reply meta mark 75 counter ip6 dscp set af41 comment "Prioritize ingress unmarked traffic of packet lengths between 0 and 77 bytes that have more than 200 pps to AF41 (TCP)"
-    meta nfproto ipv6 meta l4proto tcp meta length 0-77 ct direction original meta mark 75 counter ip6 dscp set cs0 comment "Prioritize egress unmarked traffic of packet lengths between 0 and 77 bytes that have more than 200 pps to CS0 (TCP)"
-    meta nfproto ipv6 meta l4proto tcp meta length > 77 meta mark 75 counter ip6 dscp set af41 comment "Prioritize unmarked traffic of packet lengths between 77 and 1256 bytes that have more than 200 pps to AF41 (TCP)"
-    meta nfproto ipv6 tcp sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } tcp dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 70, 71, 75 } meta length 0-1256 ip6 dscp cs1 counter ip6 dscp set $DSCP_GAMING comment "Prioritize unmarked traffic of packet lengths between 0 and 1256 bytes that have less than 200 pps to $DSCP_GAMING_COMMENT (TCP)"
+    meta nfproto ipv6 meta l4proto tcp meta length 0-84 ct direction reply meta mark 75 counter ip6 dscp set af41 comment "Prioritize ingress unmarked traffic of packet lengths between 0 and 84 bytes that have more than 200 pps to AF41 (TCP)"
+    meta nfproto ipv6 meta l4proto tcp meta length 0-84 ct direction original meta mark 75 counter ip6 dscp set cs0 comment "Prioritize egress unmarked traffic of packet lengths between 0 and 84 bytes that have more than 200 pps to CS0 (TCP)"
+    meta nfproto ipv6 meta l4proto tcp meta length > 84 meta mark 75 counter ip6 dscp set af41 comment "Prioritize unmarked traffic of packet lengths between 77 and 1256 bytes that have more than 200 pps to AF41 (TCP)"
+    meta nfproto ipv6 tcp sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } tcp dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 70, 71, 75, 110 } meta length 0-1256 ip6 dscp cs1 counter ip6 dscp set $DSCP_GAMING comment "Prioritize unmarked traffic of packet lengths between 0 and 1256 bytes that have less than 200 pps to $DSCP_GAMING_COMMENT (TCP)"
 
     # Unmarked UDP traffic (Some games also tend to use really tiny packets on upload side (same range as ACKs))
     meta nfproto ipv6 udp sport != { 80, 443 } udp dport != { 80, 443 } meta mark != { 72, 73 } meta length 0-1256 limit rate over 250/second burst 100 packets ip6 dscp cs1 counter meta mark set 80 comment "Packet mark for unmarked UDP traffic of packet lengths between 0 and 1256 bytes that have more than 250 pps"
     meta nfproto ipv6 meta l4proto udp numgen random mod 1000 < 5 meta mark 80 counter meta mark set 0 comment "0.5% probability of unmark a packet that go over 250 pps to be prioritized to $DSCP_GAMING_COMMENT (UDP)"
-    meta nfproto ipv6 meta l4proto udp meta length 0-77 ct direction reply meta mark 80 counter ip6 dscp set af41 comment "Prioritize ingress unmarked traffic of packet lengths between 0 and 77 bytes that have more than 250 pps to AF41 (UDP)"
-    meta nfproto ipv6 meta l4proto udp meta length 0-77 ct direction original meta mark 80 counter ip6 dscp set cs0 comment "Prioritize egress unmarked traffic of packet lengths between 0 and 77 bytes that have more than 250 pps to CS0 (UDP)"
-    meta nfproto ipv6 meta l4proto udp meta length > 77 meta mark 80 counter ip6 dscp set af41 comment "Prioritize unmarked traffic of packet lengths between 77 and 1256 bytes that have more than 250 pps to AF41 (UDP)"
+    meta nfproto ipv6 meta l4proto udp meta length 0-84 ct direction reply meta mark 80 counter ip6 dscp set af41 comment "Prioritize ingress unmarked traffic of packet lengths between 0 and 84 bytes that have more than 250 pps to AF41 (UDP)"
+    meta nfproto ipv6 meta l4proto udp meta length 0-84 ct direction original meta mark 80 counter ip6 dscp set cs0 comment "Prioritize egress unmarked traffic of packet lengths between 0 and 84 bytes that have more than 250 pps to CS0 (UDP)"
+    meta nfproto ipv6 meta l4proto udp meta length > 84 meta mark 80 counter ip6 dscp set af41 comment "Prioritize unmarked traffic of packet lengths between 84 and 1256 bytes that have more than 250 pps to AF41 (UDP)"
     meta nfproto ipv6 udp sport != { 80, 443 } udp dport != { 80, 443 } meta mark != { 72, 73, 80 } meta length 0-1256 ip6 dscp cs1 counter ip6 dscp set $DSCP_GAMING comment "Prioritize unmarked traffic of packet lengths between 0 and 1256 bytes that have less than 250 pps to $DSCP_GAMING_COMMENT (UDP) - Gaming & VoIP"
+	
 
     ## Custom port rules (IPv6) ##
 
@@ -1152,8 +1045,8 @@ chain dscp_marking_ip_addresses_ipv4 {
     ## IP address rules (IPv4) ##
 
     # Game consoles (Static IP) - Will cover all ports (except ports 80, 443, 8080, Live Streaming and BitTorrent)
-    ip daddr { $IPV4_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 40, 41, 42, 43 } counter ip dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
-    ip saddr { $IPV4_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 40, 41, 42, 43 } counter ip dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
+    ip daddr { $IPV4_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 40, 41, 42, 43, 100 } counter ip dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
+    ip saddr { $IPV4_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 40, 41, 42, 43, 100 } counter ip dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
 
     # TorrentBox (Static IP) - Mark 'all traffic' as bulk
     ip daddr { $IPV4_TORRENTBOX_STATIC_IP } counter ip dscp set cs1 comment "TorrentBox to CS1"
@@ -1171,8 +1064,8 @@ chain dscp_marking_ip_addresses_ipv6 {
     ## IP address rules (IPv6) ##
 
     # Game consoles (Static IP) - Will cover all ports (except ports 80, 443, 8080, Live Streaming and BitTorrent)
-    ip6 daddr { $IPV6_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 70, 71, 72, 73 } counter ip6 dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
-    ip6 saddr { $IPV6_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 70, 71, 72, 73 } counter ip6 dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
+    ip6 daddr { $IPV6_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 70, 71, 72, 73, 110 } counter ip6 dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
+    ip6 saddr { $IPV6_GAME_CONSOLES_STATIC_IP } meta l4proto { tcp, udp } th sport != { 80, 443, 8080, 1935-1936, 2396, 2935 } th dport != { 80, 443, 8080, 1935-1936, 2396, 2935 } meta mark != { 70, 71, 72, 73, 110 } counter ip6 dscp set $DSCP_GAMING comment "Game consoles to $DSCP_GAMING_COMMENT (TCP and UDP)"
 
     # TorrentBox (Static IP) - Mark 'all traffic' as bulk
     ip6 daddr { $IPV6_TORRENTBOX_STATIC_IP } counter ip6 dscp set cs1 comment "TorrentBox to CS1"
@@ -1441,7 +1334,128 @@ fi
 
 ############################################################
 
-## Reload the firewall to update the rules and check that there are no problems with the rules
+### Paths ###
+INIT_FILE="/etc/init.d/cake"
+HOTPLUG_FILE="/etc/hotplug.d/iface/99-cake"
+RULE_TMP="/tmp/00-rules.nft"
+RULE_ETC="/etc/nftables.d/00-rules.nft"
+
+### Function to check existence and minimal validity ###
+check_file() {
+    FILE="$1"
+    DESC="$2"
+
+    if [ ! -f "$FILE" ]; then
+        echo "✖ Error: $DESC ($FILE) does not exist."
+        return 1
+    fi
+
+    echo "✔ $DESC ($FILE) exists."
+
+    if grep -q "cake" "$FILE"; then
+        echo "✔ $DESC contains expected content."
+    else
+        echo "⚠ Warning: $DESC does not contain expected content."
+    fi
+}
+
+echo "### Checking required system files ###"
+check_file "$INIT_FILE" "Init script"
+check_file "$HOTPLUG_FILE" "Hotplug script"
+echo
+
+echo "### Checking nftables rule files ###"
+[ -f "$RULE_TMP" ] && echo "✔ $RULE_TMP exists." || echo "✖ $RULE_TMP is missing."
+[ -f "$RULE_ETC" ] && echo "✔ $RULE_ETC exists." || echo "✖ $RULE_ETC is missing."
+echo
+
+# Abort if /tmp/00-rules.nft is missing
+if [ ! -f "$RULE_TMP" ]; then
+    echo "✖ Critical: $RULE_TMP is required but missing. Aborting."
+    exit 1
+fi
+
+echo "All essential files present. Continuing..."
+
+
+echo "Checking if nftables rules from $RULE_TMP are loaded..."
+sleep 1
+
+# Get current nftables ruleset
+CURRENT_RULESET=$(nft list ruleset 2>/dev/null)
+EXPECTED_RULESET=$(cat "$RULE_TMP")
+
+# Compare normalized versions (remove whitespace)
+if echo "$CURRENT_RULESET" | tr -d '[:space:]' | grep -q "$(echo "$EXPECTED_RULESET" | tr -d '[:space:]')"; then
+    echo "✔ nftables ruleset matches $RULE_TMP."
+else
+    echo "✖ Loaded nftables ruleset does not match $RULE_TMP."
+    exit 1
+fi
+
+sleep 1
+
+# Reload firewall to apply rules
+echo "Reloading firewall to apply rules..."
 fw4 reload
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to reload firewall."
+    exit 1  # Stop execution if firewall reload fails
+fi
+echo "Firewall reloaded."
+sleep 1
+
+# Show queue disciplines for WAN and LAN/IFB
+echo "Displaying queue disciplines..."
+
+# Helper to safely show qdisc and handle errors
+show_qdisc() {
+    local DEV="$1"
+    echo "Queue discipline for $DEV:"
+    if ! tc qdisc show dev "$DEV" 2>/dev/null; then
+        echo "Error: Failed to show qdisc for $DEV."
+        exit 1
+    fi
+}
+
+case "$DOWNSHAPING_METHOD" in
+    "ctinfo")
+        echo "Downshaping method: ctinfo"
+        if ip link show "ifb-$WAN" > /dev/null 2>&1; then
+            echo "IFB device for WAN exists. Showing qdisc for $WAN and ifb-$WAN..."
+            show_qdisc "$WAN"
+            show_qdisc "ifb-$WAN"
+        else
+            echo "IFB device for WAN (ifb-$WAN) not found. Showing qdisc for $WAN only."
+            show_qdisc "$WAN"
+        fi
+        ;;
+    "lan" | "")
+        echo "Downshaping method: LAN"
+        show_qdisc "$WAN"
+        show_qdisc "$LAN"
+        ;;
+    *)
+        echo "Invalid downshaping method: $DOWNSHAPING_METHOD. Defaulting to LAN."
+        DOWNSHAPING_METHOD="lan"
+        echo "Downshaping method: LAN"
+        show_qdisc "$WAN"
+        show_qdisc "$LAN"
+        ;;
+esac
+
+sleep 1
+
+# Show detailed qdisc stats
+echo "Displaying qdisc statistics..."
+tc -s qdisc
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to display qdisc statistics."
+    exit 1  # Stop execution if tc command fails
+fi
+
+sleep 1
+echo "Cake.qos is now installed and running"
+
 
 ###########################################################
