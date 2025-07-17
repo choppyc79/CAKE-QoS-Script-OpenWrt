@@ -20,10 +20,10 @@ AUTORATE_INGRESS="no"  # "yes" to enable CAKE's automatic ingress rate estimatio
 
 OVERHEAD="42"           # Between -64 and 256
 MPU="84"                # Between 0 and 256
-LINK_COMPENSATION=""    # "atm" | "ptm" | "noatm"
+LINK_COMPENSATION=""    # "atm" | "ptm" | "noatm" or leave blank
 
 # If above values are unset, you can use one of the presets below
-COMMON_LINK_PRESETS="raw"
+COMMON_LINK_PRESETS="raw" 
 
 ETHER_VLAN_KEYWORD=""   # "1" to "3" for 4, 8, or 12 bytes VLAN overhead enter (ether-vlan)
 
@@ -135,7 +135,7 @@ TCP_CONGESTION_CONTROL="cubic"  # Options: "cubic" | "bbr"
                               # bbr = Google's congestion algorithm (used on YouTube)
                               # cubic = Default on most Linux systems
 
-ECN="1"  # Explicit Congestion Notification: 0=disable, 1=initiate/accept, 2=accept only
+ECN="2"  # Explicit Congestion Notification: 0=disable, 1=initiate/accept, 2=accept only
          # See: https://www.bufferbloat.net/projects/cerowrt/wiki/Enable_ECN/
 
 ######################################################################################################################
@@ -778,6 +778,7 @@ CHECK_DSCP_OTHER_STATIC_IP="$(sed '/Other static IP addresses to/!d; s/.*set //;
 CHECK_IPV4_OTHER_STATIC_IP="$(sed '/Other static IP addresses to /!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '1q;d')" > /dev/null 2>&1
 CHECK_IPV6_OTHER_STATIC_IP="$(sed '/Other static IP addresses to /!d; s/.*{ //; s/ }.*//' /etc/nftables.d/00-rules.nft | sed '3q;d')" > /dev/null 2>&1
 
+
 ############################################################
 
 ### Rules ###
@@ -1078,250 +1079,132 @@ chain dscp_marking_ip_addresses_ipv6 {
 }
 RULES
 
-    ############################################################
+	process_ipblock() {
+    local VAR="$1"         # env var containing static IP
+    local LABEL="$2"       # comment marker to locate block, e.g. "Game consoles to"
+    local LINES="$3"       # how many lines to toggle (e.g. 4)
+    local ENABLED_PATTERN="    "
+    local DISABLED_PATTERN="#   "
 
-    ## Default chain for the rules
-    if [ "$CHAIN" = "FORWARD" ]; then
-        # FORWARD
-        grep "jump" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i "14,20 s/#/ /" /tmp/00-rules.nft > /dev/null 2>&1
-        grep "jump" /tmp/00-rules.nft | sed '5q;d' | grep "#   " > /dev/null 2>&1 || sed -i "24 s/c/#c/; 25,34 s/ /#/; 35 s/}/#}/" /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$CHAIN" != "FORWARD" ]; then
-        # POSTROUTING
-        grep "jump" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i "14,20 s/ /#/" /tmp/00-rules.nft > /dev/null 2>&1
-        grep "jump" /tmp/00-rules.nft | sed '5q;d' | grep "    " > /dev/null 2>&1 || sed -i "24 s/#c/c/; 25,34 s/#/ /; 35 s/#}/}/" /tmp/00-rules.nft > /dev/null 2>&1
-    fi
+    for i in $(seq 0 $((LINES - 1))); do
+        local LINENUM=$((i + 1))
+        local SEARCH_LINE="$(grep "$LABEL" /tmp/00-rules.nft | sed "${LINENUM}q;d")"
 
+        if [ "$VAR" != "" ]; then
+            echo "$SEARCH_LINE" | grep -q "$ENABLED_PATTERN" && continue
+            sed -i "/$LABEL/{G;s/\\nX\\{$i\\}//;tend;x;s/^/X/;x};P;d;:end;s/$DISABLED_PATTERN/$ENABLED_PATTERN/;:a;n;ba" /tmp/00-rules.nft
+        else
+            echo "$SEARCH_LINE" | grep -q "$DISABLED_PATTERN" && continue
+            sed -i "/$LABEL/{G;s/\\nX\\{$i\\}//;tend;x;s/^/X/;x};P;d;:end;s/$ENABLED_PATTERN/$DISABLED_PATTERN/;:a;n;ba" /tmp/00-rules.nft
+        fi
+    done
+}
 
-    ############################################################
+process_portblock() {
+    local VAR="$1"       # Environment variable value (checked for non-empty)
+    local LABEL="$2"     # Block label to match, e.g. "Game ports to"
+    local LINES="$3"     # Total line count for this block
+    local IDX_LIST="$4"  # Space-separated line indices to process
 
-    ### Known rules ###
+    local ENABLED_PATTERN="    "
+    local DISABLED_PATTERN="#   "
 
-    ## BROADCAST VIDEO rules
-    if [ "$BROADCAST_VIDEO" = "yes" ]; then
-        # Enable
-        grep "Live Streaming ports to" /tmp/00-rules.nft | grep "    " > /dev/null 2>&1 || sed -i '/Live Streaming ports to/s/#   /    /g' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$BROADCAST_VIDEO" != "yes" ]; then
-        # Disable
-        grep "Live Streaming ports to" /tmp/00-rules.nft | grep "#   " > /dev/null 2>&1 || sed -i '/Live Streaming ports to/s/    /#   /g' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
+    for i in $IDX_LIST; do
+        local LINENUM=$((i + 1))
+        local SEARCH_LINE="$(grep "$LABEL" /tmp/00-rules.nft | sed "${LINENUM}q;d")"
 
-    ## GAMING rules
-    if [ "$GAMING" = "yes" ]; then
-        # Enable
-        grep "Known game ports" /tmp/00-rules.nft | grep "    " > /dev/null 2>&1 || sed -i '/Known game ports/s/#   /    /g' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$GAMING" != "yes" ]; then
-        # Disable
-        grep "Known game ports" /tmp/00-rules.nft | grep "#   " > /dev/null 2>&1 || sed -i '/Known game ports/s/    /#   /g' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
+        if [ "$VAR" != "" ]; then
+            echo "$SEARCH_LINE" | grep -q "$ENABLED_PATTERN" && continue
+            sed -i "/$LABEL/{G;s/\\nX\\{$i\\}//;tend;x;s/^/X/;x};P;d;:end;s/$DISABLED_PATTERN/$ENABLED_PATTERN/;:a;n;ba" /tmp/00-rules.nft
+        else
+            echo "$SEARCH_LINE" | grep -q "$DISABLED_PATTERN" && continue
+            sed -i "/$LABEL/{G;s/\\nX\\{$i\\}//;tend;x;s/^/X/;x};P;d;:end;s/$ENABLED_PATTERN/$DISABLED_PATTERN/;:a;n;ba" /tmp/00-rules.nft
+        fi
+    done
+}
 
-    ## GAME STREAMING rules
-    if [ "$GAME_STREAMING" = "yes" ]; then
-        # Enable
-        grep "Known game streaming" /tmp/00-rules.nft | grep "    " > /dev/null 2>&1 || sed -i '/Known game streaming/s/#   /    /g' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$GAME_STREAMING" != "yes" ]; then
-        # Disable
-        grep "Known game streaming" /tmp/00-rules.nft | grep "#   " > /dev/null 2>&1 || sed -i '/Known game streaming/s/    /#   /g' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
+process_knownblock() {
+    local VAR="$1"     # e.g. "$GAMING"
+    local LABEL="$2"   # e.g. "Known game ports"
 
-    ## MULTIMEDIA CONFERENCING rules
-    if [ "$MULTIMEDIA_CONFERENCING" = "yes" ]; then
-        # Enable
-        grep "Known video conferencing ports to" /tmp/00-rules.nft | grep "    " > /dev/null 2>&1 || sed -i '/Known video conferencing ports to/s/#   /    /g' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$MULTIMEDIA_CONFERENCING" != "yes" ]; then
-        # Disable
-        grep "Known video conferencing ports to" /tmp/00-rules.nft | grep "#   " > /dev/null 2>&1 || sed -i '/Known video conferencing ports to/s/    /#   /g' /tmp/00-rules.nft > /dev/null 2>&1
+    if [ "$VAR" = "yes" ]; then
+        grep "$LABEL" /tmp/00-rules.nft | grep "    " > /dev/null 2>&1 || \
+            sed -i "/$LABEL/s/#   /    /g" /tmp/00-rules.nft > /dev/null 2>&1
+    else
+        grep "$LABEL" /tmp/00-rules.nft | grep "#   " > /dev/null 2>&1 || \
+            sed -i "/$LABEL/s/    /#   /g" /tmp/00-rules.nft > /dev/null 2>&1
     fi
+}
 
-    ## TELEPHONY rules
-    if [ "$TELEPHONY" = "yes" ]; then
-        # Enable
-        grep "Known VoIP and VoWiFi ports to" /tmp/00-rules.nft | grep "    " > /dev/null 2>&1 || sed -i '/Known VoIP and VoWiFi ports to/s/#   /    /g' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$TELEPHONY" != "yes" ]; then
-        # Disable
-        grep "Known VoIP and VoWiFi ports to" /tmp/00-rules.nft | grep "#   " > /dev/null 2>&1 || sed -i '/Known VoIP and VoWiFi ports to/s/    /#   /g' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
+enable_forward_chain() {
+    sed -i "14,20 s/#/ /" /tmp/00-rules.nft > /dev/null 2>&1
+    sed -i "24 s/c/#c/; 25,34 s/ /#/; 35 s/}/#}/" /tmp/00-rules.nft > /dev/null 2>&1
+}
 
-    ############################################################
-
-    ### Custom port rules ###
-
-    ## Game ports - Used by games
-    if [ "$TCP_SRC_GAME_PORTS" != "" ]; then
-        # Enable
-        grep "Game ports to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game ports to" /tmp/00-rules.nft | sed '5q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$TCP_SRC_GAME_PORTS" = "" ]; then
-        # Disable
-        grep "Game ports to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game ports to" /tmp/00-rules.nft | sed '5q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$TCP_DST_GAME_PORTS" != "" ]; then
-        # Enable
-        grep "Game ports to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game ports to" /tmp/00-rules.nft | sed '6q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$TCP_DST_GAME_PORTS" = "" ]; then
-        # Disable
-        grep "Game ports to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game ports to" /tmp/00-rules.nft | sed '6q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$UDP_SRC_GAME_PORTS" != "" ]; then
-        # Enable
-        grep "Game ports to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game ports to" /tmp/00-rules.nft | sed '7q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$UDP_SRC_GAME_PORTS" = "" ]; then
-        # Disable
-        grep "Game ports to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game ports to" /tmp/00-rules.nft | sed '7q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$UDP_DST_GAME_PORTS" != "" ]; then
-        # Enable
-        grep "Game ports to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game ports to" /tmp/00-rules.nft | sed '8q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$UDP_DST_GAME_PORTS" = "" ]; then
-        # Disable
-        grep "Game ports to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game ports to" /tmp/00-rules.nft | sed '8q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-
-    ## Bulk ports - Used for 'bulk traffic' such as "BitTorrent"
-    if [ "$TCP_SRC_BULK_PORTS" != "" ]; then
-        # Enable
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '5q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$TCP_SRC_BULK_PORTS" = "" ]; then
-        # Disable
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '5q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$TCP_DST_BULK_PORTS" != "" ]; then
-        # Enable
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '6q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$TCP_DST_BULK_PORTS" = "" ]; then
-        # Disable
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '6q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$UDP_SRC_BULK_PORTS" != "" ]; then
-        # Enable
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '7q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$UDP_SRC_BULK_PORTS" = "" ]; then
-        # Disable
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '7q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$UDP_DST_BULK_PORTS" != "" ]; then
-        # Enable
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '8q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$UDP_DST_BULK_PORTS" = "" ]; then
-        # Disable
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Bulk ports to" /tmp/00-rules.nft | sed '8q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Bulk ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-
-    ## Other ports [OPTIONAL] - Mark wherever you want
-    if [ "$TCP_SRC_OTHER_PORTS" != "" ]; then
-        # Enable
-        grep "Other ports to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other ports to" /tmp/00-rules.nft | sed '5q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$TCP_SRC_OTHER_PORTS" = "" ]; then
-        # Disable
-        grep "Other ports to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other ports to" /tmp/00-rules.nft | sed '5q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{4\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$TCP_DST_OTHER_PORTS" != "" ]; then
-        # Enable
-        grep "Other ports to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other ports to" /tmp/00-rules.nft | sed '6q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$TCP_DST_OTHER_PORTS" = "" ]; then
-        # Disable
-        grep "Other ports to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other ports to" /tmp/00-rules.nft | sed '6q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{5\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$UDP_SRC_OTHER_PORTS" != "" ]; then
-        # Enable
-        grep "Other ports to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other ports to" /tmp/00-rules.nft | sed '7q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$UDP_SRC_OTHER_PORTS" = "" ]; then
-        # Disable
-        grep "Other ports to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other ports to" /tmp/00-rules.nft | sed '7q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{6\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$UDP_DST_OTHER_PORTS" != "" ]; then
-        # Enable
-        grep "Other ports to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other ports to" /tmp/00-rules.nft | sed '8q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$UDP_DST_OTHER_PORTS" = "" ]; then
-        # Disable
-        grep "Other ports to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other ports to" /tmp/00-rules.nft | sed '8q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other ports to/{G;s/\nX\{7\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
+enable_postrouting_chain() {
+    sed -i "14,20 s/ /#/" /tmp/00-rules.nft > /dev/null 2>&1
+    sed -i "24 s/#c/c/; 25,34 s/#/ /; 35 s/#}/}/" /tmp/00-rules.nft > /dev/null 2>&1
+}
 
     ############################################################
 
-    ### IP address rules ###
+## Default chain for the rules
+if [ "$CHAIN" = "FORWARD" ]; then
+    grep "jump" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || enable_forward_chain
+    grep "jump" /tmp/00-rules.nft | sed '5q;d' | grep "#   " > /dev/null 2>&1 || enable_forward_chain
+else
+    grep "jump" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || enable_postrouting_chain
+    grep "jump" /tmp/00-rules.nft | sed '5q;d' | grep "    " > /dev/null 2>&1 || enable_postrouting_chain
+fi
 
-    ## Game consoles (Static IP) - Will cover all ports (except ports 80, 443, 8080, Live Streaming and BitTorrent)
-    if [ "$IPV4_GAME_CONSOLES_STATIC_IP" != "" ]; then
-        # Enable
-        grep "Game consoles to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game consoles to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game consoles to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game consoles to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$IPV4_GAME_CONSOLES_STATIC_IP" = "" ]; then
-        # Disable
-        grep "Game consoles to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game consoles to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game consoles to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game consoles to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$IPV6_GAME_CONSOLES_STATIC_IP" != "" ]; then
-        # Enable
-        grep "Game consoles to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game consoles to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game consoles to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Game consoles to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$IPV6_GAME_CONSOLES_STATIC_IP" = "" ]; then
-        # Disable
-        grep "Game consoles to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game consoles to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Game consoles to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Game consoles to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
+    ############################################################
 
-    ## TorrentBox (Static IP) - Mark 'all traffic' as bulk
-    if [ "$IPV4_TORRENTBOX_STATIC_IP" != "" ]; then
-        # Enable
-        grep "TorrentBox to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "TorrentBox to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$IPV4_TORRENTBOX_STATIC_IP" = "" ]; then
-        # Disable
-        grep "TorrentBox to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "TorrentBox to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$IPV6_TORRENTBOX_STATIC_IP" != "" ]; then
-        # Enable
-        grep "TorrentBox to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "TorrentBox to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$IPV6_TORRENTBOX_STATIC_IP" = "" ]; then
-        # Disable
-        grep "TorrentBox to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "TorrentBox to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/TorrentBox to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
+### Known rules ###
 
-    ## Other static IP addresses [OPTIONAL] - Mark 'all traffic' wherever you want
-    if [ "$IPV4_OTHER_STATIC_IP" != "" ]; then
-        # Enable
-        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '1q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '2q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$IPV4_OTHER_STATIC_IP" = "" ]; then
-        # Disable
-        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '1q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{0\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '2q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{1\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
-    if [ "$IPV6_OTHER_STATIC_IP" != "" ]; then
-        # Enable
-        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '3q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '4q;d' | grep "    " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/#   /    /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    elif [ "$IPV6_OTHER_STATIC_IP" = "" ]; then
-        # Disable
-        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '3q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{2\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-        grep "Other static IP addresses to" /tmp/00-rules.nft | sed '4q;d' | grep "#   " > /dev/null 2>&1 || sed -i '/Other static IP addresses to/{G;s/\nX\{3\}//;tend;x;s/^/X/;x};P;d;:end;s/    /#   /;:a;n;ba' /tmp/00-rules.nft > /dev/null 2>&1
-    fi
+process_knownblock "$BROADCAST_VIDEO"         "Live Streaming ports to"
+process_knownblock "$GAMING"                  "Known game ports"
+process_knownblock "$GAME_STREAMING"          "Known game streaming"
+process_knownblock "$MULTIMEDIA_CONFERENCING" "Known video conferencing ports to"
+process_knownblock "$TELEPHONY"               "Known VoIP and VoWiFi ports to"
+
+    ############################################################
+
+### Custom port rules ###
+
+# Game Ports
+process_portblock "$TCP_SRC_GAME_PORTS" "Game ports to" 8 "0 4"
+process_portblock "$TCP_DST_GAME_PORTS" "Game ports to" 8 "1 5"
+process_portblock "$UDP_SRC_GAME_PORTS" "Game ports to" 8 "2 6"
+process_portblock "$UDP_DST_GAME_PORTS" "Game ports to" 8 "3 7"
+
+# Bulk Ports
+process_portblock "$TCP_SRC_BULK_PORTS" "Bulk ports to" 8 "0 4"
+process_portblock "$TCP_DST_BULK_PORTS" "Bulk ports to" 8 "1 5"
+process_portblock "$UDP_SRC_BULK_PORTS" "Bulk ports to" 8 "2 6"
+process_portblock "$UDP_DST_BULK_PORTS" "Bulk ports to" 8 "3 7"
+
+# Other Ports
+process_portblock "$TCP_SRC_OTHER_PORTS" "Other ports to" 8 "0 4"
+process_portblock "$TCP_DST_OTHER_PORTS" "Other ports to" 8 "1 5"
+process_portblock "$UDP_SRC_OTHER_PORTS" "Other ports to" 8 "2 6"
+process_portblock "$UDP_DST_OTHER_PORTS" "Other ports to" 8 "3 7"
+
+    ############################################################
+
+### IP address rules ###
+
+# Game Consoles
+process_ipblock "$IPV4_GAME_CONSOLES_STATIC_IP" "Game consoles to" 2
+process_ipblock "$IPV6_GAME_CONSOLES_STATIC_IP" "Game consoles to" 4
+
+# TorrentBox
+process_ipblock "$IPV4_TORRENTBOX_STATIC_IP" "TorrentBox to" 2
+process_ipblock "$IPV6_TORRENTBOX_STATIC_IP" "TorrentBox to" 4
+
+# Other static IPs
+process_ipblock "$IPV4_OTHER_STATIC_IP" "Other static IP addresses to" 2
+process_ipblock "$IPV6_OTHER_STATIC_IP" "Other static IP addresses to" 4
+
 
     ############################################################
 
@@ -1418,29 +1301,33 @@ show_qdisc() {
     fi
 }
 
+show_cake_qdisc() {
+    tc qdisc show dev "$1" 2>/dev/null | grep -i 'cake'
+}
+
 case "$DOWNSHAPING_METHOD" in
     "ctinfo")
         echo "Downshaping method: ctinfo"
         if ip link show "ifb-$WAN" > /dev/null 2>&1; then
-            echo "IFB device for WAN exists. Showing qdisc for $WAN and ifb-$WAN..."
-            show_qdisc "$WAN"
-            show_qdisc "ifb-$WAN"
+            echo "IFB device for WAN exists. Showing CAKE qdisc for $WAN and ifb-$WAN..."
+            show_cake_qdisc "$WAN"
+            show_cake_qdisc "ifb-$WAN"
         else
-            echo "IFB device for WAN (ifb-$WAN) not found. Showing qdisc for $WAN only."
-            show_qdisc "$WAN"
+            echo "IFB device for WAN (ifb-$WAN) not found. Showing CAKE qdisc for $WAN only."
+            show_cake_qdisc "$WAN"
         fi
         ;;
     "lan" | "")
         echo "Downshaping method: LAN"
-        show_qdisc "$WAN"
-        show_qdisc "$LAN"
+        show_cake_qdisc "$WAN"
+        show_cake_qdisc "$LAN"
         ;;
     *)
         echo "Invalid downshaping method: $DOWNSHAPING_METHOD. Defaulting to LAN."
         DOWNSHAPING_METHOD="lan"
         echo "Downshaping method: LAN"
-        show_qdisc "$WAN"
-        show_qdisc "$LAN"
+        show_cake_qdisc "$WAN"
+        show_cake_qdisc "$LAN"
         ;;
 esac
 
